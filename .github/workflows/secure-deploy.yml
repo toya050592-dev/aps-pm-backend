@@ -1,0 +1,34 @@
+name: Secure Build and Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      # 1. Audit Kemanan sebelum Build
+      - name: Run NPM Audit
+        run: npm audit --audit-level=high
+
+      # 2. Instalasi Aman & Bersih
+      - name: Secure Clean Install
+        run: npm ci --ignore-scripts
+
+      # (Opsional) Build tahap jika ada frontend atau typescript
+      # - name: Build Project
+      #   run: npm run build
+
+      # 3. Build & Push Docker Image (Opsional jika Anda deploy pakai Docker)
+      # - name: Docker Build
+      #   run: docker build -t nama-repo/aplikasi-pm:latest .

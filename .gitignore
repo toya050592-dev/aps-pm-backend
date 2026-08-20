@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+credentials/
+secrets/
+*.pem
+*.key
+.DS_Store
+
+# Pastikan lockfile selalu di-track
+!package-lock.json
+!pnpm-lock.yaml
+!yarn.lock
