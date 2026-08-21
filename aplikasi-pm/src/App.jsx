@@ -540,13 +540,11 @@ function App() {
                             <Settings size={18} /> Master Data
                         </div>
                     )}
-
-                </div>
-
-                <div onClick={handleLogout} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#fca5a5', cursor: 'pointer', fontSize: '14px', fontWeight: '600', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', transition: 'color 0.2s' }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                    onMouseLeave={(e) => e.currentTarget.style.color = '#fca5a5'}>
-                    <LogOut size={18} /> Logout
+                    <div onClick={handleLogout} className="sidebar-item" style={{ color: '#fca5a5', marginTop: '10px', borderLeft: '3px solid transparent' }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = '#fca5a5'}>
+                        <LogOut size={18} /> Logout
+                    </div>
                 </div>
             </div>
 
