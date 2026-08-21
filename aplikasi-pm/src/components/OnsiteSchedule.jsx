@@ -5,7 +5,7 @@ const OnsiteSchedule = () => {
     const [schedules, setSchedules] = useState([]);
 
     useEffect(() => {
-        fetch('http://127.0.0.1:3000/api/onsite-schedules')
+        fetch('https://aps-pm-backend.onrender.com/api/onsite-schedules')
             .then(res => res.json())
             .then(data => setSchedules(data))
             .catch(err => console.error("Failed to load onsite schedules", err));

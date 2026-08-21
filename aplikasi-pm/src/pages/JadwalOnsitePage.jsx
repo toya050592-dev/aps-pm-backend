@@ -34,7 +34,7 @@ const JadwalOnsitePage = ({ currentUser }) => {
     }, []);
 
     const fetchSchedules = () => {
-        fetch('http://127.0.0.1:3000/api/onsite-schedules')
+        fetch('https://aps-pm-backend.onrender.com/api/onsite-schedules')
             .then(res => res.json())
             .then(data => {
                 setSchedules(data);
@@ -47,7 +47,7 @@ const JadwalOnsitePage = ({ currentUser }) => {
     };
 
     const fetchUsers = () => {
-        fetch('http://127.0.0.1:3000/api/users')
+        fetch('https://aps-pm-backend.onrender.com/api/users')
             .then(res => res.json())
             .then(data => setUsers(data))
             .catch(err => console.error("Failed to load users", err));
@@ -128,8 +128,8 @@ const JadwalOnsitePage = ({ currentUser }) => {
         }
 
         const url = editingId 
-            ? `http://127.0.0.1:3000/api/onsite-schedules/${editingId}`
-            : 'http://127.0.0.1:3000/api/onsite-schedules';
+            ? `https://aps-pm-backend.onrender.com/api/onsite-schedules/${editingId}`
+            : 'https://aps-pm-backend.onrender.com/api/onsite-schedules';
         
         const method = editingId ? 'PUT' : 'POST';
 
@@ -153,7 +153,7 @@ const JadwalOnsitePage = ({ currentUser }) => {
     const handleDelete = async (id) => {
         if (window.confirm('Yakin ingin menghapus jadwal ini?')) {
             try {
-                const res = await fetch(`http://127.0.0.1:3000/api/onsite-schedules/${id}`, {
+                const res = await fetch(`https://aps-pm-backend.onrender.com/api/onsite-schedules/${id}`, {
                     method: 'DELETE'
                 });
                 if (res.ok) {

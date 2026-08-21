@@ -7,7 +7,7 @@ const ReportHub = () => {
     const tabs = ['Finance', 'Operational', 'HR'];
 
     useEffect(() => {
-        fetch('http://127.0.0.1:3000/api/reports')
+        fetch('https://aps-pm-backend.onrender.com/api/reports')
             .then(res => res.json())
             .then(data => setReportsData(data))
             .catch(err => console.error("Failed to load reports", err));
