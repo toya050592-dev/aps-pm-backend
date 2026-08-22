@@ -23,6 +23,8 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
     tasks.forEach(t => {
         if (t.plan_start_date) allDates.push(new Date(t.plan_start_date));
         if (t.plan_end_date) allDates.push(new Date(t.plan_end_date));
+        if (t.actual_start_date) allDates.push(new Date(t.actual_start_date));
+        if (t.actual_end_date) allDates.push(new Date(t.actual_end_date));
     });
 
     if (allDates.length === 0) {
@@ -147,12 +149,23 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
         const { bg, text, pill } = getStatusStyle(t.status);
 
         // Find start and end indices for rounding pill corners
-        let startWkIdx = -1;
-        let endWkIdx = -1;
+                // Find start and end indices for Plan
+        let planStartWkIdx = -1;
+        let planEndWkIdx = -1;
         weeks.forEach((w, i) => {
             if (isOverlap(t.plan_start_date, t.plan_end_date, w.start, w.end)) {
-                if (startWkIdx === -1) startWkIdx = i;
-                endWkIdx = i;
+                if (planStartWkIdx === -1) planStartWkIdx = i;
+                planEndWkIdx = i;
+            }
+        });
+
+        // Find start and end indices for Actual
+        let actStartWkIdx = -1;
+        let actEndWkIdx = -1;
+        weeks.forEach((w, i) => {
+            if (isOverlap(t.actual_start_date, t.actual_end_date, w.start, w.end)) {
+                if (actStartWkIdx === -1) actStartWkIdx = i;
+                actEndWkIdx = i;
             }
         });
 
@@ -198,24 +211,43 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
 
                 {/* Timeline Grid */}
                 {weeks.map((w, i) => {
-                    const isOverlapping = isOverlap(t.plan_start_date, t.plan_end_date, w.start, w.end);
-                    const isStart = i === startWkIdx;
-                    const isEnd = i === endWkIdx;
+                    const isPlanOverlap = isOverlap(t.plan_start_date, t.plan_end_date, w.start, w.end);
+                    const isPlanStart = i === planStartWkIdx;
+                    const isPlanEnd = i === planEndWkIdx;
+
+                    const isActOverlap = isOverlap(t.actual_start_date, t.actual_end_date, w.start, w.end);
+                    const isActStart = i === actStartWkIdx;
+                    const isActEnd = i === actEndWkIdx;
 
                     return (
-                        <td key={i} style={tdTimelineStyle}>
-                            {isOverlapping && (
-                                <div style={{
-                                    height: '14px',
-                                    backgroundColor: pill,
-                                    borderTopLeftRadius: isStart ? '7px' : '0',
-                                    borderBottomLeftRadius: isStart ? '7px' : '0',
-                                    borderTopRightRadius: isEnd ? '7px' : '0',
-                                    borderBottomRightRadius: isEnd ? '7px' : '0',
-                                    width: '100%',
-                                    margin: '6px 0' // vertical spacing in the cell
-                                }} />
-                            )}
+                        <td key={i} style={{ ...tdTimelineStyle, padding: '2px 0' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', height: '100%', justifyContent: 'center' }}>
+                                {/* Plan Bar */}
+                                {isPlanOverlap ? (
+                                    <div style={{
+                                        height: '6px',
+                                        backgroundColor: '#cbd5e1', // Light gray for Plan
+                                        borderTopLeftRadius: isPlanStart ? '3px' : '0',
+                                        borderBottomLeftRadius: isPlanStart ? '3px' : '0',
+                                        borderTopRightRadius: isPlanEnd ? '3px' : '0',
+                                        borderBottomRightRadius: isPlanEnd ? '3px' : '0',
+                                        width: '100%',
+                                    }} title="Plan" />
+                                ) : <div style={{ height: '6px' }} />}
+                                
+                                {/* Actual Bar */}
+                                {isActOverlap ? (
+                                    <div style={{
+                                        height: '10px',
+                                        backgroundColor: pill,
+                                        borderTopLeftRadius: isActStart ? '5px' : '0',
+                                        borderBottomLeftRadius: isActStart ? '5px' : '0',
+                                        borderTopRightRadius: isActEnd ? '5px' : '0',
+                                        borderBottomRightRadius: isActEnd ? '5px' : '0',
+                                        width: '100%',
+                                    }} title="Actual" />
+                                ) : <div style={{ height: '10px' }} />}
+                            </div>
                         </td>
                     );
                 })}
@@ -398,3 +430,4 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
 // ---------- PANEL EDIT TUGAS ----------
 
 export default GanttChart;
+
