@@ -488,8 +488,8 @@ function App() {
     const currentProjects = filteredProjects.slice(indexOfFirstProject, indexOfLastProject);
 
     return (
-        <div style={{ minHeight: '100vh', display: 'flex' }}>
-            <div className="glass-panel" style={{ width: '260px', padding: '24px', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--secondary-900)' }}>
+        <div className="app-container" style={{ minHeight: '100vh', display: 'flex' }}>
+            <div className="sidebar-container glass-panel" style={{ width: '260px', padding: '24px', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--secondary-900)' }}>
                 <h2 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '32px', color: 'white', display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <FolderKanban color="var(--primary-500)" size={24} /> PM Dashboard
                 </h2>
@@ -548,7 +548,7 @@ function App() {
                 </div>
             </div>
 
-            <div style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
+            <div className="main-content" style={{ flex: 1, padding: '40px', overflowY: 'auto' }}>
                 {toastMessage && (
                     <div style={{ backgroundColor: 'var(--success-bg)', border: '1px solid #86efac', color: 'var(--success-text)', padding: '16px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', fontWeight: '600', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                         <CheckCircle2 size={20} /> {toastMessage}

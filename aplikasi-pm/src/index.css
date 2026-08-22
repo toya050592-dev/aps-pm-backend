@@ -806,3 +806,54 @@ h1, h2, h3, h4 {
 .action-menu-item.danger:hover {
   background-color: #fef2f2;
 }
+@media (max-width: 768px) {
+  /* Main Container */
+  .app-container {
+    flex-direction: column !important;
+  }
+  
+  /* Sidebar */
+  .sidebar-container {
+    width: 100% !important;
+    padding: 16px !important;
+    height: auto !important;
+    min-height: unset !important;
+  }
+  
+  /* Main Content Area */
+  .main-content {
+    padding: 16px !important;
+    width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  /* Make Login Box Responsive */
+  .login-box {
+    width: 100% !important;
+    max-width: 90% !important;
+    padding: 24px !important;
+  }
+
+  /* Make forms and inputs take full width */
+  form {
+    width: 100% !important;
+  }
+  
+  /* Horizontal scroll for Data Tables */
+  .table-responsive {
+    width: 100% !important;
+    overflow-x: auto !important;
+    display: block !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Stack flex items that are in rows */
+  .flex-row-mobile-column {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .flex-row-mobile-column > * {
+    width: 100% !important;
+  }
+}
