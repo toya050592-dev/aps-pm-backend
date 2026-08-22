@@ -237,7 +237,7 @@ function TeamManagement({ currentUser, hideHeader = false }) {
                     {role !== 'Admin' && (
                         <div style={{ marginBottom: '12px' }}>
                             <p style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px' }}>Akses Modul Awal:</p>
-                            <div style={{ display: 'flex', gap: '10px' }}>
+                            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                                 {MODULE_LIST.map(m => (
                                     <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#334155', backgroundColor: '#f8fafc', padding: '6px 10px', borderRadius: '6px', cursor: 'pointer', border: '1px solid #e2e8f0' }}>
                                         <input type="checkbox" checked={newPermissions.includes(m.key)} onChange={() => toggleNewPermission(m.key)} />
@@ -280,7 +280,7 @@ function TeamManagement({ currentUser, hideHeader = false }) {
                 </select>
             </div>
 
-            <div style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
+            <div className="table-responsive" style={{ backgroundColor: '#fff', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                     <thead>
                         <tr style={{ backgroundColor: '#f8fafc', color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
@@ -398,7 +398,7 @@ function TeamManagement({ currentUser, hideHeader = false }) {
                                                     <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>
                                                         Atur akses modul untuk {u.full_name}:
                                                     </p>
-                                                    <div style={{ display: 'flex', gap: '16px', marginBottom: '12px' }}>
+                                                    <div style={{ display: 'flex', gap: '16px', marginBottom: '12px', flexWrap: 'wrap' }}>
                                                         {MODULE_LIST.map(m => (
                                                             <label key={m.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#334155', cursor: 'pointer' }}>
                                                                 <input type="checkbox" checked={tempPermissions.includes(m.key)} onChange={() => toggleTempPermission(m.key)} />
