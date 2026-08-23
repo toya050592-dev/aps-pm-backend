@@ -10,6 +10,7 @@ const multer = require('multer');
 const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const sanitizeHtml = require('sanitize-html');
 
 // Configure multer for memory storage
 const safeFileFilter = (req, file, cb) => { if(file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf' || file.mimetype.includes('spreadsheet') || file.mimetype.includes('excel')) { cb(null, true); } else { cb(new Error('Format dilarang! Hanya Gambar, PDF, Excel.')); } };
@@ -59,6 +60,28 @@ app.use('/uploads', express.static('uploads'));
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', methods: ['GET', 'POST', 'PUT', 'DELETE'] }));
 app.use(express.json({ limit: '10mb' }));
+
+// --- XSS SANITIZER MIDDLEWARE ---
+// Rekursif membersihkan semua input string di req.body dari injeksi HTML/Javascript
+const xssSanitizer = (req, res, next) => {
+  if (req.body) {
+    const sanitizeObject = (obj) => {
+      for (const key in obj) {
+        if (typeof obj[key] === 'string') {
+          obj[key] = sanitizeHtml(obj[key], {
+            allowedTags: [], // Hapus semua tag HTML (<script>, <b>, dll)
+            allowedAttributes: {}
+          });
+        } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+          sanitizeObject(obj[key]);
+        }
+      }
+    };
+    sanitizeObject(req.body);
+  }
+  next();
+};
+app.use(xssSanitizer);
 
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: 'Too many requests' });
 app.use('/api', apiLimiter);
