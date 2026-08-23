@@ -97,6 +97,17 @@ const authenticateToken = (req, res, next) => {
 // Protect all /api routes globally
 app.use('/api', authenticateToken);
 
+const authorizeAdmin = (req, res, next) => {
+  if (!req.user || !req.user.role) {
+    return res.status(403).json({ message: 'Akses ditolak. Peran tidak dikenali.' });
+  }
+  if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+    return res.status(403).json({ message: 'Akses ditolak. Hanya Admin yang diizinkan untuk tindakan ini.' });
+  }
+  next();
+};
+
+
 app.use((req, res, next) => {
   req.io = io;
   next();
@@ -314,7 +325,7 @@ app.get('/', (req, res) => {
 });
 
 // --- USERS ---
-app.post('/api/users', async (req, res) => {
+app.post('/api/users', authorizeAdmin, async (req, res) => {
   try {
     const { full_name, role, username, password, permissions, nik, jabatan } = req.body;
 
@@ -347,7 +358,7 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id', async (req, res) => {
+app.put('/api/users/:id', authorizeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { full_name, role, permissions, username, nik, jabatan } = req.body;
@@ -363,7 +374,7 @@ app.put('/api/users/:id', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id/status', async (req, res) => {
+app.put('/api/users/:id/status', authorizeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { is_active } = req.body;
@@ -378,7 +389,7 @@ app.put('/api/users/:id/status', async (req, res) => {
   }
 });
 
-app.put('/api/users/:id/password', async (req, res) => {
+app.put('/api/users/:id/password', authorizeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { password } = req.body;
@@ -444,7 +455,7 @@ app.get('/api/master-data', async (req, res) => {
   }
 });
 
-app.post('/api/master-data', async (req, res) => {
+app.post('/api/master-data', authorizeAdmin, async (req, res) => {
   try {
     const { type, name } = req.body;
     const result = await pool.query(
@@ -458,7 +469,7 @@ app.post('/api/master-data', async (req, res) => {
   }
 });
 
-app.put('/api/master-data/:id/status', async (req, res) => {
+app.put('/api/master-data/:id/status', authorizeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { is_active } = req.body;
@@ -473,7 +484,7 @@ app.put('/api/master-data/:id/status', async (req, res) => {
   }
 });
 
-app.put('/api/master-data/:id', async (req, res) => {
+app.put('/api/master-data/:id', authorizeAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
@@ -952,7 +963,7 @@ app.get('/api/projects', async (req, res) => {
   }
 });
 
-app.delete('/api/projects/:id', async (req, res) => {
+app.delete('/api/projects/:id', authorizeAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     await pool.query("BEGIN");
