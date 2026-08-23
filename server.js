@@ -83,6 +83,19 @@ const xssSanitizer = (req, res, next) => {
 };
 app.use(xssSanitizer);
 
+// --- AUDIT TRAIL LOGGER ---
+const auditLog = (event, userId, req, details) => {
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    event,
+    user_id: userId || 'GUEST',
+    ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'UNKNOWN',
+    details
+  };
+  // Dicetak dalam format JSON satu baris ke stdout agar mudah di-parse sistem cloud (Datadog/ELK/Render)
+  console.log(JSON.stringify({ AUDIT_TRAIL: logEntry }));
+};
+
 const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: 'Too many requests' });
 app.use('/api', apiLimiter);
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: 'Too many login attempts' });
@@ -368,6 +381,7 @@ app.post('/api/users', authorizeAdmin, async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${SAFE_USER_FIELDS}`,
       [full_name, role, username || null, password_hash, perms, nik || null, jabatan || null]
     );
+    auditLog('USER_CREATED', req.user.id, req, { new_user_id: newUser.rows[0].id, role, username });
     res.json(newUser.rows[0]);
   } catch (err) {
     console.error(err.message);
@@ -394,6 +408,7 @@ app.put('/api/users/:id', authorizeAdmin, async (req, res) => {
       `UPDATE users SET full_name = $1, role = $2, permissions = $3, username = $4, nik = $5, jabatan = $6 WHERE id = $7 RETURNING ${SAFE_USER_FIELDS}`,
       [full_name, role, perms, username || null, nik || null, jabatan || null, id]
     );
+    auditLog('USER_UPDATED', req.user.id, req, { target_user_id: id, new_role: role, full_name, username });
     res.json({ message: "Data anggota tim berhasil diperbarui.", data: updated.rows[0] });
   } catch (err) {
     console.error(err.message);
@@ -409,6 +424,7 @@ app.put('/api/users/:id/status', authorizeAdmin, async (req, res) => {
       `UPDATE users SET is_active = $1 WHERE id = $2 RETURNING ${SAFE_USER_FIELDS}`,
       [is_active, id]
     );
+    auditLog('USER_STATUS_CHANGED', req.user.id, req, { target_user_id: id, is_active });
     res.json({ message: "Status anggota tim berhasil diperbarui.", data: updated.rows[0] });
   } catch (err) {
     console.error(err.message);
@@ -544,12 +560,24 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
     const user = result.rows[0];
 
-    if (!user) return res.status(401).json({ message: "Username tidak ditemukan." });
-    if (!user.is_active) return res.status(401).json({ message: "Akun ini sudah dinonaktifkan." });
-    if (!user.password_hash) return res.status(401).json({ message: "Akun ini belum memiliki password. Hubungi Admin." });
+    if (!user) {
+      auditLog('LOGIN_FAILED', null, req, { username, reason: 'Username tidak ditemukan' });
+      return res.status(401).json({ message: "Username tidak ditemukan." });
+    }
+    if (!user.is_active) {
+      auditLog('LOGIN_FAILED', user.id, req, { username, reason: 'Akun dinonaktifkan' });
+      return res.status(401).json({ message: "Akun ini sudah dinonaktifkan." });
+    }
+    if (!user.password_hash) {
+      auditLog('LOGIN_FAILED', user.id, req, { username, reason: 'Password kosong' });
+      return res.status(401).json({ message: "Akun ini belum memiliki password. Hubungi Admin." });
+    }
 
     const isMatch = await bcrypt.compare(password, user.password_hash);
-    if (!isMatch) return res.status(401).json({ message: "Password salah." });
+    if (!isMatch) {
+      auditLog('LOGIN_FAILED', user.id, req, { username, reason: 'Password salah' });
+      return res.status(401).json({ message: "Password salah." });
+    }
 
     const sessionToken = crypto.randomUUID();
     await pool.query("UPDATE users SET session_token = $1 WHERE id = $2", [sessionToken, user.id]);
@@ -561,6 +589,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     };
 
     const token = jwt.sign(safeUser, process.env.JWT_SECRET, { expiresIn: '40m' });
+    auditLog('LOGIN_SUCCESS', user.id, req, { username, role: user.role });
     res.json({ message: "Login berhasil!", token, user: safeUser });
   } catch (err) {
     console.error(err.message);
@@ -1040,6 +1069,7 @@ app.delete('/api/projects/:id', authorizeAdmin, async (req, res) => {
     await pool.query("DELETE FROM projects WHERE id = $1", [id]);
     
     await pool.query("COMMIT");
+    auditLog('PROJECT_DELETED', req.user.id, req, { project_id: id });
     res.json({ message: "Proyek berhasil dihapus" });
   } catch (err) {
     await pool.query("ROLLBACK");
