@@ -147,6 +147,46 @@ const decryptAES = (text) => {
   } catch (err) { return text; }
 };
 
+// --- HONEYPOT & IP BLOCKLIST ---
+const blockedIPs = new Set();
+
+app.use((req, res, next) => {
+  const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  if (blockedIPs.has(clientIP)) {
+    return res.status(403).json({ error: "Access Denied. IP Blacklisted." });
+  }
+  next();
+});
+
+const honeypotHandler = (req, res) => {
+  const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  
+  auditLog('HONEYPOT_TRIGGERED', 'SYSTEM', req, { 
+    path: req.originalUrl,
+    ip_address: clientIP,
+    action: 'IP added to blocklist' 
+  });
+  
+  blockedIPs.add(clientIP);
+
+  res.status(200).json({
+    status: "success",
+    data: {
+      config_version: "v1.2.4",
+      db_dump_url: "https://example.com/fake-dump.sql.gz",
+      token: "mock_admin_token_abcdef123456",
+      users: 1054
+    }
+  });
+};
+
+app.all('/api/admin/config', honeypotHandler);
+app.all('/api/backup/db', honeypotHandler);
+app.all('/.env', honeypotHandler);
+app.all('/wp-login.php', honeypotHandler);
+app.all('/api/v1/users/export', honeypotHandler);
+app.all('/admin/settings', honeypotHandler);
+
 const apiLimiter = rateLimit({ 
   windowMs: 15 * 60 * 1000, 
   max: 1000, 
@@ -2214,6 +2254,7 @@ app.delete('/api/document-tracking/:id', async (req, res) => {
 httpServer.listen(port, () => {
   console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
 });
+
 
 
 
