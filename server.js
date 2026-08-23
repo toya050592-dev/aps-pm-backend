@@ -151,8 +151,58 @@ const auditLog = (event, userId, req, details) => {
 
 // --- APPLICATION-LEVEL CRYPTOGRAPHY (AES-256-GCM) ---
 const ENCRYPTION_KEY = crypto.scryptSync(process.env.JWT_SECRET || 'rahasia-negara-sangat-aman', 'salt', 32);
-const IV_LENGTH = 16; 
+const IV_LENGTH = 16;
 
+// --- ASYMMETRIC JWT KEY MANAGEMENT (RS256) & AUTO-ROTATION ---
+let jwtKeyCache = new Map();
+let activeJwtKeyId = null;
+
+const refreshJwtKeys = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS jwt_keys (
+        kid VARCHAR(255) PRIMARY KEY,
+        private_key TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_active BOOLEAN DEFAULT FALSE
+      )
+    `);
+
+    const keysRes = await pool.query("SELECT * FROM jwt_keys");
+    jwtKeyCache.clear();
+    keysRes.rows.forEach(k => jwtKeyCache.set(k.kid, k));
+
+    let activeKey = keysRes.rows.find(k => k.is_active);
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    
+    if (!activeKey || (Date.now() - new Date(activeKey.created_at).getTime() > thirtyDaysMs)) {
+      console.log("Generating new RS256 Keypair for JWT Auto-Rotation...");
+      const crypto = require('crypto');
+      const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+      });
+      const newKid = crypto.randomUUID();
+      
+      await pool.query("BEGIN");
+      await pool.query("UPDATE jwt_keys SET is_active = FALSE WHERE is_active = TRUE");
+      await pool.query(
+        "INSERT INTO jwt_keys (kid, private_key, public_key, is_active) VALUES ($1, $2, $3, TRUE)",
+        [newKid, privateKey, publicKey]
+      );
+      await pool.query("COMMIT");
+      
+      activeKey = { kid: newKid, private_key: privateKey, public_key: publicKey, is_active: true };
+      jwtKeyCache.set(newKid, activeKey);
+    }
+    activeJwtKeyId = activeKey.kid;
+    console.log("Active JWT Key ID loaded:", activeJwtKeyId);
+  } catch (err) {
+    console.error("Error managing JWT keys:", err.message);
+  }
+};
 const encryptAES = (text) => {
   if (!text) return text;
   try {
@@ -257,7 +307,33 @@ const authenticateToken = (req, res, next) => {
   
   if (!token) return res.status(401).json({ message: 'Akses ditolak: Token tidak ditemukan' });
 
-  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
+  
+    const decodedHeader = jwt.decode(token, { complete: true });
+    
+    // Fallback to symmetric (HS256) if token is old and doesn't have a 'kid' (Graceful transition)
+    if (!decodedHeader || !decodedHeader.header || !decodedHeader.header.kid) {
+      return jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
+        if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
+        try {
+          const result = await pool.query("SELECT session_token, is_active FROM users WHERE id = $1", [decoded.id]);
+          if (result.rows.length === 0) return res.status(401).json({ message: 'User tidak ditemukan' });
+          if (!result.rows[0].is_active) return res.status(403).json({ message: 'Akun Anda telah dinonaktifkan oleh Admin.' });
+          if (result.rows[0].session_token !== decoded.session_token) return res.status(401).json({ message: 'Sesi tidak valid (akun login di perangkat lain)' });
+          req.user = decoded;
+          next();
+        } catch (dbErr) {
+          res.status(500).json({ message: 'Kesalahan internal server saat verifikasi' });
+        }
+      });
+    }
+
+    const kid = decodedHeader.header.kid;
+    const keyData = jwtKeyCache.get(kid);
+    if (!keyData) {
+      return res.status(401).json({ message: 'Sesi ditolak: Kunci kriptografi tidak dikenali.' });
+    }
+
+    jwt.verify(token, keyData.public_key, { algorithms: ['RS256'] }, async (err, decoded) => {
     if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
 
     try {
@@ -736,7 +812,11 @@ app.post('/api/login', loginLimiter, async (req, res) => {
       session_token: sessionToken
     };
 
-    const token = jwt.sign(safeUser, process.env.JWT_SECRET, { expiresIn: '40m' });
+    const token = jwt.sign(safeUser, jwtKeyCache.get(activeJwtKeyId).private_key, { 
+        algorithm: 'RS256', 
+        keyid: activeJwtKeyId, 
+        expiresIn: '40m' 
+      });
     auditLog('LOGIN_SUCCESS', user.id, req, { username, role: user.role });
     res.json({ message: "Login berhasil!", token, user: safeUser });
   } catch (err) {
@@ -2271,6 +2351,7 @@ app.delete('/api/document-tracking/:id', async (req, res) => {
     }
 });
 
+refreshJwtKeys().then(() => {
 httpServer.listen(port, () => {
   console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
 });
@@ -2281,3 +2362,5 @@ httpServer.listen(port, () => {
 
 
 
+
+});
