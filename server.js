@@ -64,6 +64,39 @@ const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: 'To
 app.use('/api', apiLimiter);
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: 'Too many login attempts' });
 
+const authenticateToken = (req, res, next) => {
+  // Allow public routes
+  if (req.path === '/login' || req.path === '/login/') return next();
+
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) return res.status(401).json({ message: 'Akses ditolak: Token tidak ditemukan' });
+
+  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
+    if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
+
+    try {
+      // Use the pool to verify session_token matches the database to handle force-logout
+      const result = await pool.query("SELECT session_token FROM users WHERE id = $1", [decoded.id]);
+      if (result.rows.length === 0) return res.status(401).json({ message: 'User tidak ditemukan' });
+      
+      if (result.rows[0].session_token !== decoded.session_token) {
+        return res.status(401).json({ message: 'Sesi tidak valid (akun login di perangkat lain)' });
+      }
+      
+      req.user = decoded; // Pass decoded user to the next middleware/route
+      next();
+    } catch (e) {
+      console.error('Auth DB Error:', e);
+      res.status(500).json({ message: 'Kesalahan internal server saat verifikasi' });
+    }
+  });
+};
+
+// Protect all /api routes globally
+app.use('/api', authenticateToken);
+
 app.use((req, res, next) => {
   req.io = io;
   next();
@@ -497,31 +530,9 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   }
 });
 
-app.get('/api/auth/check', async (req, res) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  
-  if (!token) return res.sendStatus(401);
-
-  jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
-    if (err) return res.sendStatus(401); // Expired or invalid token
-
-    try {
-      const result = await pool.query("SELECT session_token FROM users WHERE id = $1", [decoded.id]);
-      if (result.rows.length === 0) return res.sendStatus(401);
-      
-      const dbSessionToken = result.rows[0].session_token;
-      if (dbSessionToken !== decoded.session_token) {
-        // Token valid, but session token doesn't match DB (logged in elsewhere)
-        return res.sendStatus(401);
-      }
-      
-      res.json({ valid: true });
-    } catch (e) {
-      console.error(e);
-      res.sendStatus(500);
-    }
-  });
+app.get('/api/auth/check', (req, res) => {
+  // Jika berhasil lolos dari middleware authenticateToken, berarti token valid
+  res.json({ valid: true, user: req.user });
 });
 
 // --- PROJECTS ---
