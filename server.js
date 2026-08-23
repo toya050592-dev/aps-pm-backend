@@ -115,6 +115,38 @@ const auditLog = (event, userId, req, details) => {
   console.log(JSON.stringify({ AUDIT_TRAIL: logEntry }));
 };
 
+// --- APPLICATION-LEVEL CRYPTOGRAPHY (AES-256-GCM) ---
+const ENCRYPTION_KEY = crypto.scryptSync(process.env.JWT_SECRET || 'rahasia-negara-sangat-aman', 'salt', 32);
+const IV_LENGTH = 16; 
+
+const encryptAES = (text) => {
+  if (!text) return text;
+  try {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(String(text), 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+    return iv.toString('hex') + ':' + authTag + ':' + encrypted;
+  } catch (err) { return text; }
+};
+
+const decryptAES = (text) => {
+  if (!text || typeof text !== 'string' || !text.includes(':')) return text;
+  try {
+    const parts = text.split(':');
+    if (parts.length !== 3) return text;
+    const iv = Buffer.from(parts[0], 'hex');
+    const authTag = Buffer.from(parts[1], 'hex');
+    const encryptedText = Buffer.from(parts[2], 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', ENCRYPTION_KEY, iv);
+    decipher.setAuthTag(authTag);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (err) { return text; }
+};
+
 const apiLimiter = rateLimit({ 
   windowMs: 15 * 60 * 1000, 
   max: 1000, 
@@ -435,7 +467,7 @@ app.post('/api/users', authorizeAdmin, async (req, res) => {
     const newUser = await pool.query(
       `INSERT INTO users (full_name, role, username, password_hash, permissions, nik, jabatan)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${SAFE_USER_FIELDS}`,
-      [full_name, role, username || null, password_hash, perms, nik || null, jabatan || null]
+      [full_name, role, username || null, password_hash, perms, encryptAES(nik) || null, jabatan || null]
     );
     auditLog('USER_CREATED', req.user.id, req, { new_user_id: newUser.rows[0].id, role, username });
     res.json(newUser.rows[0]);
@@ -448,7 +480,7 @@ app.post('/api/users', authorizeAdmin, async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const allUsers = await pool.query(`SELECT ${SAFE_USER_FIELDS} FROM users ORDER BY full_name ASC`);
-    res.json(allUsers.rows);
+    res.json(allUsers.rows.map(u => ({ ...u, nik: decryptAES(u.nik) })));
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Terjadi kesalahan pada server");
@@ -462,7 +494,7 @@ app.put('/api/users/:id', authorizeAdmin, async (req, res) => {
     const perms = JSON.stringify(permissions || []);
     const updated = await pool.query(
       `UPDATE users SET full_name = $1, role = $2, permissions = $3, username = $4, nik = $5, jabatan = $6 WHERE id = $7 RETURNING ${SAFE_USER_FIELDS}`,
-      [full_name, role, perms, username || null, nik || null, jabatan || null, id]
+      [full_name, role, perms, username || null, encryptAES(nik) || null, jabatan || null, id]
     );
     auditLog('USER_UPDATED', req.user.id, req, { target_user_id: id, new_role: role, full_name, username });
     res.json({ message: "Data anggota tim berhasil diperbarui.", data: updated.rows[0] });
@@ -547,7 +579,7 @@ app.get('/api/master-data', async (req, res) => {
       params = [type];
     }
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Terjadi kesalahan saat mengambil master data");
@@ -1307,7 +1339,7 @@ app.get('/api/task-assignees/:projectId', async (req, res) => {
        WHERE t.project_id = $1`,
       [projectId]
     );
-    res.json(result.rows);
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Terjadi kesalahan saat mengambil data PIC");
@@ -1790,7 +1822,7 @@ app.post('/api/projects/:projectId/import-wbs', exportImportLimiter, upload.sing
 app.get('/api/onsite-schedules', async (req, res) => {
   try {
     const result = await pool.query("SELECT * FROM onsite_schedules WHERE status != 'Selesai' ORDER BY id ASC");
-    res.json(result.rows);
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
   } catch (err) {
     console.error('Error fetching onsite schedules:', err);
     res.status(500).json({ error: 'Terjadi kesalahan server.' });
@@ -1845,7 +1877,7 @@ app.delete('/api/onsite-schedules/:id', async (req, res) => {
 app.get('/api/reports', heavyLimiter, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM reports ORDER BY date DESC');
-    res.json(result.rows);
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
   } catch (err) {
     console.error('Error fetching reports:', err);
     res.status(500).json({ error: 'Terjadi kesalahan server.' });
@@ -1861,7 +1893,7 @@ app.get('/api/overtime', async (req, res) => {
       JOIN users u ON o.user_id = u.id 
       ORDER BY o.id DESC
     `);
-    res.json(result.rows);
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
   } catch (err) {
     console.error('Error fetching overtime:', err);
     res.status(500).json({ error: 'Terjadi kesalahan server.' });
@@ -1952,7 +1984,7 @@ app.get('/api/handovers', async (req, res) => {
             LEFT JOIN document_tracking dt ON h.document_id = dt.id
             ORDER BY h.tanggal_diberikan DESC
         `);
-        res.json(result.rows);
+        res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
     } catch (err) {
         console.error('Error fetching handovers:', err);
         res.status(500).json({ error: 'Gagal mengambil data serah terima.' });
@@ -1972,7 +2004,7 @@ app.get('/api/handovers/:document_id', async (req, res) => {
             WHERE h.document_id = $1
             ORDER BY h.tanggal_diberikan DESC
         `, [document_id]);
-        res.json(result.rows);
+        res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
     } catch (err) {
         console.error('Error fetching handovers:', err);
         res.status(500).json({ error: 'Gagal mengambil riwayat serah terima.' });
@@ -2024,7 +2056,7 @@ app.get('/api/document-tracking', async (req, res) => {
             LEFT JOIN master_data md ON dt.vendor_id = md.id 
             ORDER BY dt.id DESC
         `);
-        res.json(result.rows);
+        res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
     } catch (err) {
         console.error('Error fetching document tracking:', err);
         res.status(500).json({ error: 'Terjadi kesalahan server.' });
@@ -2052,7 +2084,7 @@ app.post('/api/document-tracking', uploadDoc.fields(docFields), async (req, res)
         const result = await pool.query(
             `INSERT INTO document_tracking (vendor_id, marketing_pic_id, nama_project, no_pengajuan, kebutuhan, keterangan, nilai_estimasi, file_pm, pm_date, pm_pic, status, last_updated_by) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
-            [sanitize(vendor_id), sanitize(marketing_pic_id), sanitize(nama_project), sanitize(no_pengajuan), sanitize(kebutuhan), sanitize(keterangan), sanitize(nilai_estimasi), file_pm, sanitize(pm_date), sanitize(pm_pic), status || 'PENGAJUAN', sanitize(last_updated_by)]
+            [sanitize(vendor_id), sanitize(marketing_pic_id), sanitize(nama_project), sanitize(no_pengajuan), encryptAES(sanitize(kebutuhan)), encryptAES(sanitize(keterangan)), sanitize(nilai_estimasi), file_pm, sanitize(pm_date), sanitize(pm_pic), status || 'PENGAJUAN', sanitize(last_updated_by)]
         );
         res.status(201).json(result.rows[0]);
     } catch (err) {
@@ -2069,7 +2101,7 @@ app.put('/api/document-tracking/:id/keterangan', express.json(), async (req, res
         
         const result = await pool.query(
             `UPDATE document_tracking SET keterangan = $1, last_updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-            [keterangan, id]
+            [encryptAES(keterangan), id]
         );
         
         // Handle wrapper difference
@@ -2141,6 +2173,7 @@ app.put('/api/document-tracking/:id', uploadDoc.fields(docFields), async (req, r
                     value = null;
                 }
                 
+                if (key === 'keterangan' || key === 'kebutuhan') { value = encryptAES(value); }
                 if (value === 'null' || value === null) {
                     setClauses.push(`${key} = NULL`);
                 } else {
@@ -2181,5 +2214,8 @@ app.delete('/api/document-tracking/:id', async (req, res) => {
 httpServer.listen(port, () => {
   console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
 });
+
+
+
 
 
