@@ -102,18 +102,52 @@ const xssSanitizer = (req, res, next) => {
 };
 app.use(xssSanitizer);
 
-// --- AUDIT TRAIL LOGGER ---
+const anomalyTracker = new Map();
+const blockedIPs = new Map();
+const BLOCK_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// --- AUDIT TRAIL LOGGER & REAL-TIME ANOMALY RESPONSE ---
 const auditLog = (event, userId, req, details) => {
+  const clientIP = req ? (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'UNKNOWN') : 'UNKNOWN';
   const logEntry = {
     timestamp: new Date().toISOString(),
     event,
     user_id: userId || 'GUEST',
-    ip_address: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'UNKNOWN',
+    ip_address: clientIP,
     details
   };
-  // Dicetak dalam format JSON satu baris ke stdout agar mudah di-parse sistem cloud (Datadog/ELK/Render)
   console.log(JSON.stringify({ AUDIT_TRAIL: logEntry }));
+
+  // Real-Time Anomaly Detection Engine
+  const suspiciousEvents = ['LOGIN_FAILED', 'RATE_LIMIT_EXCEEDED', 'UNAUTHORIZED_ACCESS', 'HONEYPOT_TRIGGERED'];
+  if (suspiciousEvents.includes(event) && clientIP !== 'UNKNOWN') {
+    const now = Date.now();
+    const timestamps = anomalyTracker.get(clientIP) || [];
+    const recentTimestamps = timestamps.filter(ts => now - ts < 10000);
+    recentTimestamps.push(now);
+    anomalyTracker.set(clientIP, recentTimestamps);
+
+    if (recentTimestamps.length >= 5 || event === 'HONEYPOT_TRIGGERED') {
+      blockedIPs.set(clientIP, now + BLOCK_DURATION_MS);
+      anomalyTracker.delete(clientIP);
+      
+      console.log(JSON.stringify({ AUDIT_TRAIL: { timestamp: new Date().toISOString(), event: 'ANOMALY_DETECTED', details: "Blocked IP " + clientIP + " for 24h due to anomalies/honeypot." }}));
+
+      if (userId && userId !== 'GUEST' && userId !== 'SYSTEM') {
+        const crypto = require('crypto');
+        pool.query("UPDATE users SET session_token =  & REAL-TIME ANOMALY RESPONSE WHERE id = $2", [crypto.randomUUID(), userId])
+          .then(() => console.log(JSON.stringify({ AUDIT_TRAIL: { timestamp: new Date().toISOString(), event: 'SESSION_REVOKED', user_id: userId, details: "Revoked session." }})))
+          .catch(e => {});
+      } else if (details && details.username) {
+        const crypto = require('crypto');
+        pool.query("UPDATE users SET session_token =  & REAL-TIME ANOMALY RESPONSE WHERE username = $2", [crypto.randomUUID(), details.username])
+          .then(() => console.log(JSON.stringify({ AUDIT_TRAIL: { timestamp: new Date().toISOString(), event: 'SESSION_REVOKED', details: "Revoked session." }})))
+          .catch(e => {});
+      }
+    }
+  }
 };
+
 
 // --- APPLICATION-LEVEL CRYPTOGRAPHY (AES-256-GCM) ---
 const ENCRYPTION_KEY = crypto.scryptSync(process.env.JWT_SECRET || 'rahasia-negara-sangat-aman', 'salt', 32);
@@ -148,36 +182,22 @@ const decryptAES = (text) => {
 };
 
 // --- HONEYPOT & IP BLOCKLIST ---
-const blockedIPs = new Set();
-
 app.use((req, res, next) => {
   const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
   if (blockedIPs.has(clientIP)) {
-    return res.status(403).json({ error: "Access Denied. IP Blacklisted." });
+    if (Date.now() > blockedIPs.get(clientIP)) {
+      blockedIPs.delete(clientIP);
+    } else {
+      return res.status(403).json({ error: "Access Denied. IP Temporarily Blacklisted due to suspicious activity." });
+    }
   }
   next();
 });
 
 const honeypotHandler = (req, res) => {
   const clientIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  
-  auditLog('HONEYPOT_TRIGGERED', 'SYSTEM', req, { 
-    path: req.originalUrl,
-    ip_address: clientIP,
-    action: 'IP added to blocklist' 
-  });
-  
-  blockedIPs.add(clientIP);
-
-  res.status(200).json({
-    status: "success",
-    data: {
-      config_version: "v1.2.4",
-      db_dump_url: "https://example.com/fake-dump.sql.gz",
-      token: "mock_admin_token_abcdef123456",
-      users: 1054
-    }
-  });
+  auditLog('HONEYPOT_TRIGGERED', 'SYSTEM', req, { path: req.originalUrl, ip_address: clientIP });
+  res.status(200).json({ status: "success", data: { config_version: "v1.2.4", db_dump_url: "https://example.com/fake-dump.sql.gz", token: "mock_admin_token_abcdef123456", users: 1054 } });
 };
 
 app.all('/api/admin/config', honeypotHandler);
