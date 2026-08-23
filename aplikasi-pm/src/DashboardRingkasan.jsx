@@ -65,9 +65,9 @@ export default function DashboardRingkasan({ currentUser, setPage }) {
                     query += `&productTypeId=${filterProductType}`;
                 }
                 const [statsRes, statusesRes, productsRes] = await Promise.all([
-                    fetch(`${API_URL}/api/dashboard-stats${query}`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${API_URL}/api/master-data?type=STATUS_Project`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                    fetch(`${API_URL}/api/master-data?type=JENIS_PRODUK`, { headers: { 'Authorization': `Bearer ${token}` } })
+                    fetch(`${API_URL}/api/dashboard-stats${query}`),
+                    fetch(`${API_URL}/api/master-data?type=STATUS_Project`),
+                    fetch(`${API_URL}/api/master-data?type=JENIS_PRODUK`)
                 ]);
                 
                 if (statsRes.ok) {
@@ -94,11 +94,9 @@ export default function DashboardRingkasan({ currentUser, setPage }) {
 
     const handleStatusChange = async (projectId, newStatus) => {
         try {
-            const token = localStorage.getItem('token');
             const res = await fetch(`${API_URL}/api/projects/${projectId}`, {
                 method: 'PUT',
                 headers: { 
-                    'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ status: newStatus })
@@ -661,3 +659,4 @@ export default function DashboardRingkasan({ currentUser, setPage }) {
         </div>
     );
 }
+
