@@ -2195,7 +2195,7 @@ app.put('/api/document-tracking/:id', uploadDoc.fields(docFields), async (req, r
         res.json(updatedDoc.rows[0]);
     } catch (err) {
         console.error('Error updating document tracking:', err);
-        res.status(500).json({ error: 'Terjadi kesalahan saat update data: ' + err.message });
+        res.status(500).json({ error: 'Terjadi kesalahan internal saat update data dokumen.' });
     }
 });
 
@@ -2214,6 +2214,7 @@ app.delete('/api/document-tracking/:id', async (req, res) => {
 httpServer.listen(port, () => {
   console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
 });
+
 
 
 
