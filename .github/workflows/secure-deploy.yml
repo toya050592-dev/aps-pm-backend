@@ -3,6 +3,8 @@ name: Secure Build and Deploy
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
   build:
@@ -32,3 +34,4 @@ jobs:
       # 3. Build & Push Docker Image (Opsional jika Anda deploy pakai Docker)
       # - name: Docker Build
       #   run: docker build -t nama-repo/aplikasi-pm:latest .
+
