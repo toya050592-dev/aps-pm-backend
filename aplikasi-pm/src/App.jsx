@@ -403,7 +403,18 @@ function App() {
         }
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        try {
+            const token = localStorage.getItem('pm_token');
+            if (token) {
+                await fetch(`${API_URL}/api/logout`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            }
+        } catch (e) {
+            console.error('Gagal logout di server:', e);
+        }
         localStorage.removeItem('pm_token');
         localStorage.removeItem('pm_user');
         setCurrentUser(null);
