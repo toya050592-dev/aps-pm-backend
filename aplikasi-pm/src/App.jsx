@@ -17,6 +17,38 @@ import { io } from 'socket.io-client';
 // Update API_URL to empty string to use Vite proxy, solving Dev Tunnels / HTTPS issues
 export const API_URL = '';
 
+// --- Global Fetch Interceptor ---
+// Automatically attaches the JWT token to all API requests to prevent 401 Unauthorized errors
+// across dozens of files without needing to refactor each fetch() call individually.
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+    let [resource, config] = args;
+    if (typeof resource === 'string' && resource.includes('/api/')) {
+        config = config || {};
+        
+        // Handle Headers object vs plain object
+        let isHeadersObj = config.headers instanceof Headers;
+        let authExists = false;
+        
+        if (isHeadersObj) {
+            authExists = config.headers.has('Authorization');
+        } else {
+            config.headers = config.headers || {};
+            authExists = !!(config.headers['Authorization'] || config.headers.Authorization);
+        }
+
+        const token = localStorage.getItem('pm_token');
+        if (token && !authExists) {
+            if (isHeadersObj) {
+                config.headers.append('Authorization', `Bearer ${token}`);
+            } else {
+                config.headers['Authorization'] = `Bearer ${token}`;
+            }
+        }
+    }
+    return originalFetch(resource, config);
+};
+
 const MODULE_LIST = [
     { key: 'summary', label: 'Dashboard Ringkasan' },
     { key: 'doc_tracking', label: 'Document Tracking' },
