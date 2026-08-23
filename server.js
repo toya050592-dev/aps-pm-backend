@@ -299,67 +299,49 @@ const exportImportLimiter = rateLimit({
 });
 
 const authenticateToken = (req, res, next) => {
-  // Allow public routes
   if (req.path === '/login' || req.path === '/login/') return next();
 
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
-  
   if (!token) return res.status(401).json({ message: 'Akses ditolak: Token tidak ditemukan' });
 
+  const decodedHeader = require('jsonwebtoken').decode(token, { complete: true });
   
-    const decodedHeader = jwt.decode(token, { complete: true });
-    
-    // Fallback to symmetric (HS256) if token is old and doesn't have a 'kid' (Graceful transition)
-    if (!decodedHeader || !decodedHeader.header || !decodedHeader.header.kid) {
-      return jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
-        if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
-        try {
-          const result = await pool.query("SELECT session_token, is_active FROM users WHERE id = $1", [decoded.id]);
-          if (result.rows.length === 0) return res.status(401).json({ message: 'User tidak ditemukan' });
-          if (!result.rows[0].is_active) return res.status(403).json({ message: 'Akun Anda telah dinonaktifkan oleh Admin.' });
-          if (result.rows[0].session_token !== decoded.session_token) return res.status(401).json({ message: 'Sesi tidak valid (akun login di perangkat lain)' });
-          req.user = decoded;
-          next();
-        } catch (dbErr) {
-          res.status(500).json({ message: 'Kesalahan internal server saat verifikasi' });
-        }
-      });
-    }
-
-    const kid = decodedHeader.header.kid;
-    const keyData = jwtKeyCache.get(kid);
-    if (!keyData) {
-      return res.status(401).json({ message: 'Sesi ditolak: Kunci kriptografi tidak dikenali.' });
-    }
-
-    jwt.verify(token, keyData.public_key, { algorithms: ['RS256'] }, async (err, decoded) => {
-    if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
-
+  const verifyDbSession = async (decoded) => {
     try {
-      // Use the pool to verify session_token matches the database to handle force-logout
       const result = await pool.query("SELECT session_token, is_active FROM users WHERE id = $1", [decoded.id]);
       if (result.rows.length === 0) return res.status(401).json({ message: 'User tidak ditemukan' });
-      
-      if (!result.rows[0].is_active) {
-        return res.status(403).json({ message: 'Akun Anda telah dinonaktifkan oleh Admin.' });
-      }
-
-      if (result.rows[0].session_token !== decoded.session_token) {
-        return res.status(401).json({ message: 'Sesi tidak valid (akun login di perangkat lain)' });
-      }
-      
-      req.user = decoded; // Pass decoded user to the next middleware/route
+      if (!result.rows[0].is_active) return res.status(403).json({ message: 'Akun Anda telah dinonaktifkan oleh Admin.' });
+      if (result.rows[0].session_token !== decoded.session_token) return res.status(401).json({ message: 'Sesi tidak valid (akun login di perangkat lain)' });
+      req.user = decoded;
       next();
-    } catch (e) {
-      console.error('Auth DB Error:', e);
+    } catch (dbErr) {
+      if (dbErr.code === 'ECONNREFUSED' || dbErr.code === 'ENOTFOUND' || dbErr.code === 'EHOSTUNREACH' || dbErr.code === 'ETIMEDOUT' || !dbErr.code) {
+        console.warn("[DR CIRCUIT BREAKER] DB Offline. Bypassing session revocation check to prevent session loss for user: " + decoded.username);
+        req.user = decoded;
+        req.isEmergencyMode = true; // Flag for endpoints to handle degraded mode gracefully
+        return next();
+      }
       res.status(500).json({ message: 'Kesalahan internal server saat verifikasi' });
     }
+  };
+
+  if (!decodedHeader || !decodedHeader.header || !decodedHeader.header.kid) {
+    return jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+      if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
+      verifyDbSession(decoded);
+    });
+  }
+
+  const kid = decodedHeader.header.kid;
+  const keyData = jwtKeyCache.get(kid);
+  if (!keyData) return res.status(401).json({ message: 'Sesi ditolak: Kunci kriptografi tidak dikenali.' });
+
+  jwt.verify(token, keyData.public_key, { algorithms: ['RS256'] }, (err, decoded) => {
+    if (err) return res.status(401).json({ message: 'Sesi kedaluwarsa atau token tidak valid' });
+    verifyDbSession(decoded);
   });
 };
-
-// Protect all /api routes globally
-app.use('/api', authenticateToken);
 
 const authorizeAdmin = (req, res, next) => {
   if (!req.user || !req.user.role) {
