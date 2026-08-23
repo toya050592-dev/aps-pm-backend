@@ -78,9 +78,13 @@ const authenticateToken = (req, res, next) => {
 
     try {
       // Use the pool to verify session_token matches the database to handle force-logout
-      const result = await pool.query("SELECT session_token FROM users WHERE id = $1", [decoded.id]);
+      const result = await pool.query("SELECT session_token, is_active FROM users WHERE id = $1", [decoded.id]);
       if (result.rows.length === 0) return res.status(401).json({ message: 'User tidak ditemukan' });
       
+      if (!result.rows[0].is_active) {
+        return res.status(403).json({ message: 'Akun Anda telah dinonaktifkan oleh Admin.' });
+      }
+
       if (result.rows[0].session_token !== decoded.session_token) {
         return res.status(401).json({ message: 'Sesi tidak valid (akun login di perangkat lain)' });
       }
@@ -538,6 +542,38 @@ app.post('/api/login', loginLimiter, async (req, res) => {
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Terjadi kesalahan saat login");
+  }
+});
+
+// --- LOGOUT ---
+app.post('/api/logout', async (req, res) => {
+  try {
+    // We don't need body, just the authenticated user's ID
+    if (req.user && req.user.id) {
+      // Rotate the session token to instantly revoke the current JWT
+      const newSessionToken = crypto.randomUUID();
+      await pool.query("UPDATE users SET session_token =  WHERE id = ", [newSessionToken, req.user.id]);
+    }
+    res.json({ message: 'Logout berhasil, sesi dihapus.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Kesalahan saat logout' });
+  }
+});
+
+// --- LOGOUT ---
+app.post('/api/logout', async (req, res) => {
+  try {
+    // We don't need body, just the authenticated user's ID from req.user
+    if (req.user && req.user.id) {
+      // Rotate the session token to instantly revoke the current JWT
+      const newSessionToken = crypto.randomUUID();
+      await pool.query("UPDATE users SET session_token = $1 WHERE id = $2", [newSessionToken, req.user.id]);
+    }
+    res.json({ message: 'Logout berhasil, sesi dihapus.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Kesalahan saat logout' });
   }
 });
 
@@ -2036,3 +2072,4 @@ app.delete('/api/document-tracking/:id', async (req, res) => {
 httpServer.listen(port, () => {
   console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
 });
+
