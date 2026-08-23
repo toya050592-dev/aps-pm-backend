@@ -96,9 +96,46 @@ const auditLog = (event, userId, req, details) => {
   console.log(JSON.stringify({ AUDIT_TRAIL: logEntry }));
 };
 
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 1000, message: 'Too many requests' });
+const apiLimiter = rateLimit({ 
+  windowMs: 15 * 60 * 1000, 
+  max: 1000, 
+  message: { message: 'Terlalu banyak permintaan dari IP Anda, silakan coba lagi nanti.' },
+  handler: (req, res, next, options) => {
+    auditLog('RATE_LIMIT_EXCEEDED', req.user ? req.user.id : null, req, { limit_type: 'Global API', max: options.max });
+    res.status(options.statusCode).send(options.message);
+  }
+});
 app.use('/api', apiLimiter);
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: 'Too many login attempts' });
+
+const loginLimiter = rateLimit({ 
+  windowMs: 15 * 60 * 1000, 
+  max: 20, 
+  message: { message: 'Terlalu banyak percobaan login, silakan coba lagi dalam 15 menit.' },
+  handler: (req, res, next, options) => {
+    auditLog('RATE_LIMIT_EXCEEDED', null, req, { limit_type: 'Login API', max: options.max });
+    res.status(options.statusCode).send(options.message);
+  }
+});
+
+const heavyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 100, 
+  message: { message: 'Terlalu banyak memuat data kompleks. Harap tunggu sesaat agar server tidak terbebani.' },
+  handler: (req, res, next, options) => {
+    auditLog('RATE_LIMIT_EXCEEDED', req.user ? req.user.id : null, req, { limit_type: 'Heavy DB Queries', max: options.max });
+    res.status(options.statusCode).send(options.message);
+  }
+});
+
+const exportImportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 15, 
+  message: { message: 'Batas harian ekspor/impor hampir tercapai. Silakan coba lagi nanti untuk mencegah beban server (DoS).' },
+  handler: (req, res, next, options) => {
+    auditLog('RATE_LIMIT_EXCEEDED', req.user ? req.user.id : null, req, { limit_type: 'Export/Import', max: options.max });
+    res.status(options.statusCode).send(options.message);
+  }
+});
 
 const authenticateToken = (req, res, next) => {
   // Allow public routes
@@ -651,7 +688,7 @@ app.post('/api/projects', async (req, res) => {
 });
 
 // ---------- DASHBOARD STATS ----------
-app.get('/api/dashboard-stats', async (req, res) => {
+app.get('/api/dashboard-stats', heavyLimiter, async (req, res) => {
   try {
     const { period, startDate, endDate, productTypeId } = req.query;
     let pFilter = "";
@@ -815,7 +852,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
 // --- BULK IMPORT PROJECT ROUTES ---
 
 // 1. Download Template Excel (with Data Validation)
-app.get('/api/projects/export-template', async (req, res) => {
+app.get('/api/projects/export-template', exportImportLimiter, async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'APS PM System';
@@ -898,7 +935,7 @@ app.get('/api/projects/export-template', async (req, res) => {
 });
 
 // 2. Import Excel
-app.post('/api/projects/import', upload.single('file'), async (req, res) => {
+app.post('/api/projects/import', exportImportLimiter, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "File Excel tidak ditemukan" });
 
   try {
@@ -1006,7 +1043,7 @@ app.post('/api/projects/import', upload.single('file'), async (req, res) => {
 });
 
 // 3. Download Error Log
-app.post('/api/projects/import-errors-excel', express.json(), async (req, res) => {
+app.post('/api/projects/import-errors-excel', exportImportLimiter, express.json(), async (req, res) => {
   try {
     const { errors } = req.body;
     if (!errors || !Array.isArray(errors)) return res.status(400).send("Data error tidak valid.");
@@ -1304,7 +1341,7 @@ app.get('/api/dashboard-summary', async (req, res) => {
 });
 
 // --- EXPORT WBS TO EXCEL ---
-app.get('/api/projects/:projectId/export-wbs', async (req, res) => {
+app.get('/api/projects/:projectId/export-wbs', exportImportLimiter, async (req, res) => {
   try {
     const { projectId } = req.params;
 
@@ -1580,7 +1617,7 @@ app.get('/api/template-wbs', async (req, res) => {
 });
 
 // --- IMPORT WBS FROM EXCEL ---
-app.post('/api/projects/:projectId/import-wbs', upload.single('file'), async (req, res) => {
+app.post('/api/projects/:projectId/import-wbs', exportImportLimiter, upload.single('file'), async (req, res) => {
   const client = await pool.connect();
   try {
     const { projectId } = req.params;
@@ -1786,7 +1823,7 @@ app.delete('/api/onsite-schedules/:id', async (req, res) => {
   }
 });
 
-app.get('/api/reports', async (req, res) => {
+app.get('/api/reports', heavyLimiter, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM reports ORDER BY date DESC');
     res.json(result.rows);
@@ -2125,4 +2162,5 @@ app.delete('/api/document-tracking/:id', async (req, res) => {
 httpServer.listen(port, () => {
   console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
 });
+
 
