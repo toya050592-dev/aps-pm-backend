@@ -57,7 +57,26 @@ const bastStorage = multer.diskStorage({
 const uploadBast = multer({ storage: bastStorage, fileFilter: safeFileFilter, limits: { fileSize: 15*1024*1024 } });
 
 app.use('/uploads', express.static('uploads'));
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+// --- HTTP SECURITY HEADERS (OWASP) ---
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Mengizinkan frontend mengambil resource (gambar/PDF)
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'none'"], // Mengunci semua jenis resource eksternal secara default
+      // Mengizinkan frontend (Vercel/Localhost) untuk menanamkan (embed) PDF dari backend, mencegah Clickjacking dari domain peretas
+      frameAncestors: ["'self'", process.env.FRONTEND_URL || 'http://localhost:5173', 'https://aps-pm-backend.vercel.app'],
+      scriptSrc: ["'none'"], // Backend ini murni API, tidak mengeksekusi script klien
+      styleSrc: ["'none'"],
+      upgradeInsecureRequests: [] // Memaksa penggunaan HTTPS
+    },
+  },
+  hsts: {
+    maxAge: 31536000, // Strict-Transport-Security selama 1 tahun penuh
+    includeSubDomains: true,
+    preload: true,
+  },
+  frameguard: false // Menonaktifkan X-Frame-Options lama (diganti oleh CSP frameAncestors yang lebih canggih & mendukung multi-origin)
+}));
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', methods: ['GET', 'POST', 'PUT', 'DELETE'] }));
 app.use(express.json({ limit: '10mb' }));
 
