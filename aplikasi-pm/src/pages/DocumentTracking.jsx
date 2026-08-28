@@ -427,6 +427,7 @@ export default function DocumentTracking({ currentUser }) {
 
             <DocumentTable 
                 documents={filteredDocs}
+                loading={loading}
                 currentPage={currentPage}
                 setCurrentPage={setCurrentPage}
                 itemsPerPage={itemsPerPage}

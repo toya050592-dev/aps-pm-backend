@@ -10,7 +10,8 @@ export default function DocumentTable({
     getStatusBadge, 
     onEdit, 
     onEditKeterangan, 
-    onDelete 
+    onDelete,
+    loading
 }) {
     return (<>
             {/* Table */}
