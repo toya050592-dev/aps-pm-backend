@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { api } from '../services/api';
 
 const API_URL = '';
 
@@ -12,8 +13,8 @@ export default function MasterDataModule({ currentUser, TeamManagementComponent 
 
     const fetchData = async () => {
         try {
-            const res = await fetch(`${API_URL}/api/master-data?type=${activeTab}`);
-            setData(await res.json());
+            const res = await api.get(`/api/master-data?type=${activeTab}`);
+            setData(Array.isArray(res) ? res : []);
         } catch (e) { console.error(e); }
     };
 
@@ -23,11 +24,7 @@ export default function MasterDataModule({ currentUser, TeamManagementComponent 
         e.preventDefault();
         if (!newItemName) return;
         try {
-            await fetch(`${API_URL}/api/master-data`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ type: activeTab, name: newItemName })
-            });
+            await api.post(`/api/master-data`, { type: activeTab, name: newItemName });
             setNewItemName('');
             fetchData();
         } catch (e) { console.error(e); }
@@ -35,22 +32,14 @@ export default function MasterDataModule({ currentUser, TeamManagementComponent 
 
     const toggleStatus = async (id, currentStatus) => {
         try {
-            await fetch(`${API_URL}/api/master-data/${id}/status`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ is_active: !currentStatus })
-            });
+            await api.put(`/api/master-data/${id}/status`, { is_active: !currentStatus });
             fetchData();
         } catch (e) { console.error(e); }
     };
 
     const handleEditSave = async (id) => {
         try {
-            await fetch(`${API_URL}/api/master-data/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: editingName })
-            });
+            await api.put(`/api/master-data/${id}`, { name: editingName });
             setEditingId(null);
             fetchData();
         } catch (e) { console.error(e); }
