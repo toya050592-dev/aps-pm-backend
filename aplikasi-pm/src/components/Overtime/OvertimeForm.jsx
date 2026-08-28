@@ -7,7 +7,7 @@ export default function OvertimeForm({
     formData, 
     setFormData, 
     users, 
-    loading 
+    isSubmitting 
 }) {
     if (!showForm) return null;
 

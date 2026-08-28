@@ -470,7 +470,7 @@ export default function OvertimePage({ currentUser }) {
                     formData={formData}
                     setFormData={setFormData}
                     users={users}
-                    loading={loading}
+                    isSubmitting={isSubmitting}
                 />
 
                 {/* Mini Bar Chart */}
