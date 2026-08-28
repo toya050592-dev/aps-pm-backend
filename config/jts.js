@@ -23,7 +23,8 @@ const initJTS = async () => {
         signingKey,
         bearerPassLifetime: 60 * 40, // 40 minutes (matches previous JWT)
         stateProofLifetime: 60 * 60 * 24 * 7, // 7 days
-        sessionStore: new InMemorySessionStore() 
+        sessionStore: new InMemorySessionStore(),
+        audience: 'aps-pm-api'
     });
 
     // Initialize Resource Server
