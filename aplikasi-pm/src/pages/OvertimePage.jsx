@@ -468,7 +468,6 @@ export default function OvertimePage({ currentUser }) {
                     users={users}
                     loading={loading}
                 />
-                )}
 
                 {/* Mini Bar Chart */}
                 <div className="modern-card" style={{ flex: '1', minWidth: '320px', display: 'flex', flexDirection: 'column' }}>
