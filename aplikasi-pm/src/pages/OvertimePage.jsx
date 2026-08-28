@@ -512,7 +512,7 @@ export default function OvertimePage({ currentUser }) {
                 </div>
                 <OvertimeTable 
                     requests={filteredRequests}
-                    role={role}
+                    role={currentUser?.role}
                     onApprove={(id, status) => handleApprove(id, status)}
                     onDelete={handleDelete}
                     onPhotoClick={setPhotoPreviewUrl}
