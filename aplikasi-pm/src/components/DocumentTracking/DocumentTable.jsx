@@ -12,7 +12,7 @@ export default function DocumentTable({
     onEditKeterangan, 
     onDelete 
 }) {
-    return (
+    return (<>
             {/* Table */}
             <div className="doc-card" style={{ padding: 0, overflow: 'hidden' }}>
                 <div style={{ overflowX: 'auto' }}>
@@ -98,5 +98,5 @@ export default function DocumentTable({
                         </div>
                     )}
                 </div>
-    );
+    </div></>);
 }

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Plus, UploadCloud, Filter, FileText, Check, MoreVertical, X, CheckCircle2, ChevronRight, CheckCircle, FileCheck, DollarSign, MoreHorizontal, Trash2, AlertCircle, MessageSquare, ListTodo } from 'lucide-react';
 import { API_URL } from '../App';
+import DocumentTable from '../components/DocumentTracking/DocumentTable';
+import DetailModal from '../components/DocumentTracking/DetailModal';
+import KeteranganModal from '../components/DocumentTracking/KeteranganModal';
 
 const STEPS = ['PENGAJUAN', 'PR SUBMITTED', 'PR APPROVED', 'PO ISSUED', 'IMPLEMENTASI', 'BAST', 'COMPLETED'];
 
