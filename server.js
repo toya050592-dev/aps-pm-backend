@@ -94,6 +94,12 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
@@ -104,6 +110,12 @@ app.use('/api', apiRoutes);
 // --- HONEYPOT CATCH-ALL (Unmatched Routes) ---
 const { honeypotTrap } = require('./middlewares/security');
 app.use(honeypotTrap);
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error('[Global Error]', err);
+  res.status(500).json({ message: 'Terjadi kesalahan internal pada server.', error: process.env.NODE_ENV === 'development' ? err.message : undefined });
+});
 
 // Connect to Redis (Graceful Fallback)
 const cacheManager = require('./config/redis');
@@ -125,6 +137,15 @@ const shutdown = () => {
             });
     });
 };
+
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught Exception:', err);
+    shutdown();
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
+    shutdown();
+});
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

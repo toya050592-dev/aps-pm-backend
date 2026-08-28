@@ -448,8 +448,8 @@ export default function DocumentTracking({ currentUser }) {
                 STEPS={STEPS}
                 vendors={vendors}
                 marketingPics={marketingPics}
-                historyList={historyList}
-                users={users}
+                teamRekonUsers={teamRekonUsers}
+                users={teamManagementUsers}
                 handoverForm={handoverForm}
                 setHandoverForm={setHandoverForm}
                 handleSubmitHandover={handleSubmitHandover}

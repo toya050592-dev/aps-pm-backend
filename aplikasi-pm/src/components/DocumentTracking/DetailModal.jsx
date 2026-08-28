@@ -12,7 +12,7 @@ export default function DetailModal({
     STEPS,
     vendors,
     marketingPics,
-    historyList,
+    teamRekonUsers,
     users,
     handoverForm,
     setHandoverForm,
