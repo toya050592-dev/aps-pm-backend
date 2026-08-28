@@ -11,4 +11,13 @@ router.post('/', authorizeAdmin, projectController.createProject);
 // Import projects from Excel
 router.post('/import', exportImportLimiter, authorizeAdmin, upload.single('file'), projectController.importProjects);
 
+// Get all projects
+router.get("/", projectController.getProjects);
+
+// Update project
+router.put("/:id", authorizeAdmin, projectController.updateProject);
+
+// Delete project
+router.delete("/:id", authorizeAdmin, projectController.deleteProject);
+
 module.exports = router;
