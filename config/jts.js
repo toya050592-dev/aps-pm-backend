@@ -22,7 +22,8 @@ class MySQLSessionStore extends BaseSessionStore {
         console.log("[JTS] MySQL Session Store tabel berhasil dicek/dibuat.");
     }
 
-    async createSession(sessionData) {
+    async createSession(input) {
+        const sessionData = this.createSessionData(input);
         const expiresAt = new Date(sessionData.expiresAt);
         await this.pool.query(
             "INSERT INTO jts_sessions (aid, prn, current_state_proof, expires_at, session_data) VALUES (?, ?, ?, ?, ?)",
