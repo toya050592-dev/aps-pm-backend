@@ -114,7 +114,7 @@ export default function DashboardRingkasan({ currentUser, setPage }) {
     if (loading && !stats) return <div style={{ padding: '40px', textAlign: 'center' }}>Memuat Dashboard...</div>;
     if (!stats || !stats.metrics) return <div style={{ padding: '40px', textAlign: 'center' }}>Gagal memuat data.</div>;
 
-    const { metrics, statusBreakdown, upcomingMilestones, attentionProjects, topProjects, picStats, projectList = [] } = stats;
+    const { metrics, statusBreakdown = [], upcomingMilestones = [], attentionProjects = [], topProjects = [], picStats = [], projectList = [] } = stats;
 
     // Dummy data for small sparklines in KPI cards
     const sparklineData = [
