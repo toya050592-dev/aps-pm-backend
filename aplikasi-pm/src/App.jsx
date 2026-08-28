@@ -449,6 +449,7 @@ function App() {
         }
         localStorage.removeItem('pm_token');
         localStorage.removeItem('pm_user');
+        localStorage.removeItem('pm_state_proof');
         setCurrentUser(null);
         setActiveProject(null);
         setPage('summary');

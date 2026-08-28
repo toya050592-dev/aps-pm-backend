@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Trash2, Plus, KeyRound, ShieldCheck, Search } from 'lucide-react';
 
-const API_URL = '';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 const MODULE_LIST = [
     { key: 'summary', label: 'Dashboard Ringkasan' },

@@ -1,0 +1,440 @@
+    console.error(err.message);
+    res.status(500).send("Terjadi kesalahan saat mengupdate master data");
+  }
+});
+
+// --- LOGIN & AUTH ---
+app.post('/api/login', loginLimiter, async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
+    const user = result.rows[0];
+
+    if (!user) {
+      auditLog('LOGIN_FAILED', null, req, { username, reason: 'Username tidak ditemukan' });
+      return res.status(401).json({ message: "Username tidak ditemukan." });
+    }
+    if (!user.is_active) {
+      auditLog('LOGIN_FAILED', user.id, req, { username, reason: 'Akun dinonaktifkan' });
+      return res.status(401).json({ message: "Akun ini sudah dinonaktifkan." });
+    }
+    if (!user.password_hash) {
+      auditLog('LOGIN_FAILED', user.id, req, { username, reason: 'Password kosong' });
+      return res.status(401).json({ message: "Akun ini belum memiliki password. Hubungi Admin." });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password_hash);
+    if (!isMatch) {
+      auditLog('LOGIN_FAILED', user.id, req, { username, reason: 'Password salah' });
+      return res.status(401).json({ message: "Password salah." });
+    }
+
+    const sessionToken = crypto.randomUUID();
+    await pool.query("UPDATE users SET session_token = $1 WHERE id = $2", [sessionToken, user.id]);
+
+    const safeUser = {
+      id: user.id, full_name: user.full_name, role: user.role,
+      username: user.username, permissions: user.permissions,
+      session_token: sessionToken
+    };
+
+    const token = jwt.sign(safeUser, process.env.JWT_SECRET, { expiresIn: '40m' });
+    auditLog('LOGIN_SUCCESS', user.id, req, { username, role: user.role });
+    res.json({ message: "Login berhasil!", token, user: safeUser });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send("Terjadi kesalahan saat login");
+  }
+});
+
+// --- LOGOUT ---
+app.post('/api/logout', async (req, res) => {
+  try {
+    // We don't need body, just the authenticated user's ID from req.user
+    if (req.user && req.user.id) {
+      // Rotate the session token to instantly revoke the current JWT
+      const newSessionToken = crypto.randomUUID();
+      await pool.query("UPDATE users SET session_token = $1 WHERE id = $2", [newSessionToken, req.user.id]);
+    }
+    res.json({ message: 'Logout berhasil, sesi dihapus.' });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ message: 'Kesalahan saat logout' });
+  }
+});
+
+app.get('/api/auth/check', (req, res) => {
+  // Jika berhasil lolos dari middleware authenticateToken, berarti token valid
+  res.json({ valid: true, user: req.user });
+});
+
+// --- PROJECTS ---
+app.post('/api/projects', async (req, res) => {
+  try {
+    const { project_name, status, baseline_start_date, baseline_end_date, pic_user_id, product_type_id, project_value, progress, issues, pic_marketing_id } = req.body;
+    const newProject = await pool.query(
+        "INSERT INTO projects (project_name, status, baseline_start_date, baseline_end_date, pic_user_id, product_type_id, project_value, progress, issues, pic_marketing_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *",
+        [project_name, status, baseline_start_date, baseline_end_date, pic_user_id || null, product_type_id || null, project_value || 0, progress || '', issues || '', pic_marketing_id || null]
+      );
+      req.io.emit('new_project', newProject.rows[0]);
+      res.json(newProject.rows[0]);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send("Terjadi kesalahan saat membuat proyek");
+  }
+});
+
+// ---------- DASHBOARD STATS ----------
+app.get('/api/dashboard-stats', heavyLimiter, async (req, res) => {
+  try {
+    const { period, startDate, endDate, productTypeId } = req.query;
+    let pFilter = "";
+    let tFilter = "";
+
+    if (productTypeId) {
+      const pid = parseInt(productTypeId, 10);
+      if (!isNaN(pid)) {
+        pFilter += ` AND product_type_id = ${pid}`;
+        tFilter += ` AND project_id IN (SELECT id FROM projects WHERE product_type_id = ${pid})`;
+      }
+    }
+
+    if (period === 'custom') {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (startDate && dateRegex.test(startDate)) {
+        pFilter += ` AND DATE(COALESCE(actual_end_date, baseline_end_date, created_at)) >= '${startDate}'`;
+        tFilter += ` AND DATE(COALESCE(plan_end_date, CURRENT_DATE)) >= '${startDate}'`;
+      }
+      if (endDate && dateRegex.test(endDate)) {
+        pFilter += ` AND DATE(COALESCE(actual_end_date, baseline_end_date, created_at)) <= '${endDate}'`;
+        tFilter += ` AND DATE(COALESCE(plan_end_date, CURRENT_DATE)) <= '${endDate}'`;
+      }
+    } else if (period === 'this_month') {
+      pFilter += " AND EXTRACT(MONTH FROM COALESCE(actual_end_date, baseline_end_date, created_at)) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM COALESCE(actual_end_date, baseline_end_date, created_at)) = EXTRACT(YEAR FROM CURRENT_DATE)";
+      tFilter += " AND EXTRACT(MONTH FROM COALESCE(plan_end_date, CURRENT_DATE)) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM COALESCE(plan_end_date, CURRENT_DATE)) = EXTRACT(YEAR FROM CURRENT_DATE)";
+    } else if (period === 'last_month') {
+      pFilter += " AND EXTRACT(MONTH FROM COALESCE(actual_end_date, baseline_end_date, created_at)) = EXTRACT(MONTH FROM CURRENT_DATE - INTERVAL 1 MONTH) AND EXTRACT(YEAR FROM COALESCE(actual_end_date, baseline_end_date, created_at)) = EXTRACT(YEAR FROM CURRENT_DATE - INTERVAL 1 MONTH)";
+      tFilter += " AND EXTRACT(MONTH FROM COALESCE(plan_end_date, CURRENT_DATE)) = EXTRACT(MONTH FROM CURRENT_DATE - INTERVAL 1 MONTH) AND EXTRACT(YEAR FROM COALESCE(plan_end_date, CURRENT_DATE)) = EXTRACT(YEAR FROM CURRENT_DATE - INTERVAL 1 MONTH)";
+    } else if (period === 'this_year') {
+      pFilter += " AND ((status IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project') AND EXTRACT(YEAR FROM COALESCE(actual_end_date, baseline_end_date, baseline_start_date, created_at)) = EXTRACT(YEAR FROM CURRENT_DATE)) OR (status NOT IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project')))";
+      tFilter += " AND project_id IN (SELECT id FROM projects WHERE ((status IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project') AND EXTRACT(YEAR FROM COALESCE(actual_end_date, baseline_end_date, baseline_start_date, created_at)) = EXTRACT(YEAR FROM CURRENT_DATE)) OR (status NOT IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project'))))";
+    } else if (period === 'by_year') {
+      const yearVal = parseInt(req.query.year, 10);
+      if (!isNaN(yearVal)) {
+        pFilter += ` AND ((status IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project') AND EXTRACT(YEAR FROM COALESCE(actual_end_date, baseline_end_date, baseline_start_date, created_at)) = ${yearVal}) OR (status NOT IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project') AND EXTRACT(YEAR FROM CURRENT_DATE) = ${yearVal}))`;
+        tFilter += ` AND project_id IN (SELECT id FROM projects WHERE ((status IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project') AND EXTRACT(YEAR FROM COALESCE(actual_end_date, baseline_end_date, baseline_start_date, created_at)) = ${yearVal}) OR (status NOT IN ('Go Live', 'Completed', 'Complete', 'On Hold', 'Cancel Project') AND EXTRACT(YEAR FROM CURRENT_DATE) = ${yearVal})))`;
+      }
+    }
+
+    // Basic Counts
+    const projectCountRes = await pool.query(`SELECT COUNT(*) as count FROM projects WHERE 1=1 ${pFilter}`);
+    const totalProjects = parseInt(projectCountRes.rows[0].count, 10);
+
+    const taskCountRes = await pool.query(`SELECT COUNT(*) as count FROM tasks WHERE 1=1 ${tFilter}`);
+    const totalTasks = parseInt(taskCountRes.rows[0].count, 10);
+
+    const completedTaskRes = await pool.query(`SELECT COUNT(*) as count FROM tasks WHERE status = 'Completed' ${tFilter}`);
+    const completedTasks = parseInt(completedTaskRes.rows[0].count, 10);
+
+    const delayedTaskRes = await pool.query(`SELECT COUNT(*) as count FROM tasks WHERE status != 'Completed' AND plan_end_date < CURRENT_DATE ${tFilter}`);
+    const delayedTasks = parseInt(delayedTaskRes.rows[0].count, 10);
+
+    const openIssueRes = await pool.query(`SELECT COUNT(*) as count FROM projects WHERE issues IS NOT NULL AND TRIM(COALESCE(issues, '')) != '' AND TRIM(COALESCE(issues, '')) != '-' ${pFilter}`);
+    const openIssues = parseInt(openIssueRes.rows[0].count, 10);
+
+    // Revenue
+    const revenueRes = await pool.query(`SELECT SUM(project_value) as total_nilai FROM projects WHERE 1=1 ${pFilter}`);
+    const totalNilai = parseInt(revenueRes.rows[0].total_nilai || 0, 10);
+
+    const realisasiRes = await pool.query(`SELECT SUM(project_value) as total_realisasi FROM projects WHERE status = 'Go Live' ${pFilter}`);
+    const totalRealisasi = parseInt(realisasiRes.rows[0].total_realisasi || 0, 10);
+
+    // Status Breakdown (Projects)
+    const statusBreakdownRes = await pool.query(`SELECT status, COUNT(*) as count, SUM(project_value) as total_value FROM projects WHERE 1=1 ${pFilter} GROUP BY status`);
+    
+    // Upcoming Milestones (Tasks ending soon)
+    const upcomingTasksRes = await pool.query(`
+      SELECT t.task_name, t.plan_end_date as end_date, p.project_name 
+      FROM tasks t 
+      JOIN projects p ON t.project_id = p.id 
+      WHERE t.status != 'Completed' AND t.plan_end_date >= CURRENT_DATE ${tFilter}
+      ORDER BY t.plan_end_date ASC LIMIT 5
+    `);
+
+    // Proyek Perlu Perhatian (Projects with issues or on hold)
+    const attentionProjectsRes = await pool.query(`
+      SELECT p.id, p.project_name, p.status, p.issues, p.baseline_end_date, p.progress,
+             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'Completed') as completed_tasks_count,
+             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks_count
+      FROM projects p
+      WHERE ((p.issues IS NOT NULL AND TRIM(COALESCE(p.issues, '')) != '' AND TRIM(COALESCE(p.issues, '')) != '-') 
+         OR p.status = 'On Hold') ${pFilter}
+      LIMIT 5
+    `);
+
+    // Top 5 Projects by Value
+    const topProjectsRes = await pool.query(`SELECT project_name, project_value FROM projects WHERE 1=1 ${pFilter} ORDER BY project_value DESC LIMIT 5`);
+
+    // PIC Project Handling Stats
+    const picStatsRes = await pool.query(`
+      SELECT COALESCE(u.full_name, 'Belum Ada PIC') as pic_name, COUNT(p.id) as total_projects
+      FROM projects p
+      LEFT JOIN users u ON p.pic_user_id = u.id
+      WHERE 1=1 ${pFilter}
+      GROUP BY u.full_name
+      ORDER BY total_projects DESC
+    `);
+
+    // All Projects list for dashboard table
+    const projectListRes = await pool.query(`
+      SELECT p.id, p.project_name, p.status, p.project_value, p.progress, p.issues, p.baseline_end_date,
+             COALESCE(p.actual_end_date, p.baseline_end_date, p.created_at) as go_live_date,
+             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id AND t.status = 'Completed') as completed_tasks_count,
+             (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) as total_tasks_count,
+             m2.name as pic_marketing_name,
+             m1.name as product_type_name
+      FROM projects p
+      LEFT JOIN master_data m2 ON p.pic_marketing_id = m2.id
+      LEFT JOIN master_data m1 ON p.product_type_id = m1.id
+      WHERE p.status != 'Completed' ${pFilter}
+      ORDER BY p.created_at DESC
+    `);
+
+    const projectList = projectListRes.rows.map(p => {
+      const total = parseInt(p.total_tasks_count, 10);
+      const completed = parseInt(p.completed_tasks_count, 10);
+      return {
+        id: p.id,
+        project_name: p.project_name,
+        status: p.status,
+        project_value: p.project_value,
+        go_live_date: p.go_live_date,
+        pic_marketing_name: p.pic_marketing_name,
+        product_type_name: p.product_type_name,
+        progress: p.progress || (total > 0 ? `${Math.round((completed / total) * 100)}%` : '0%')
+      };
+    });
+
+    res.json({
+      metrics: {
+        totalProjects,
+        totalTasks,
+        completedTasks,
+        delayedTasks,
+        averageProgress: totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0,
+        openIssues,
+        revenue: {
+          total: totalNilai,
+          kontrak: totalNilai, // Simplified mapping
+          realisasi: totalRealisasi,
+        }
+      },
+      statusBreakdown: statusBreakdownRes.rows.map(r => ({
+        name: r.status,
+        value: parseInt(r.count, 10),
+        revenue: parseInt(r.total_value || 0, 10)
+      })),
+      upcomingMilestones: upcomingTasksRes.rows,
+      attentionProjects: attentionProjectsRes.rows,
+      topProjects: topProjectsRes.rows,
+      picStats: picStatsRes.rows,
+      projectList
+    });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: 'Server error fetching dashboard stats' });
+  }
+});
+
+// --- BULK IMPORT PROJECT ROUTES ---
+
+// 1. Download Template Excel (with Data Validation)
+app.get('/api/projects/export-template', exportImportLimiter, async (req, res) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'APS PM System';
+    
+    // Main Sheet
+    const sheet = workbook.addWorksheet('Template Import Project');
+    
+    // Headers
+    const headerRow = sheet.addRow(['Nama Project', 'PIC Project', 'Jenis Produk', 'PIC Marketing', 'Tanggal Mulai', 'Nilai Project (Rp)']);
+    headerRow.font = { bold: true };
+    sheet.columns = [
+      { width: 35 }, { width: 25 }, { width: 25 }, { width: 25 }, { width: 15 }, { width: 20 }
+    ];
+
+    // Master Data Sheet (Hidden)
+    const masterSheet = workbook.addWorksheet('MasterData', { state: 'hidden' });
+    
+    // Fetch PICs
+    const usersRes = await pool.query("SELECT full_name FROM users WHERE is_active = true ORDER BY full_name ASC");
+    const pics = usersRes.rows.map(r => r.full_name);
+    
+    // Fetch Product Types
+    const productsRes = await pool.query("SELECT name FROM master_data WHERE type = 'JENIS_PRODUK' AND is_active = true ORDER BY name ASC");
+    const products = productsRes.rows.map(r => r.name);
+
+    // Fetch Marketing Types
+    const marketingRes = await pool.query("SELECT name FROM master_data WHERE type = 'MARKETING' AND is_active = true ORDER BY name ASC");
+    const marketings = marketingRes.rows.map(r => r.name);
+    
+    // Populate Master Data Sheet
+    masterSheet.getColumn('A').values = ['PIC List', ...pics];
+    masterSheet.getColumn('B').values = ['Product List', ...products];
+    masterSheet.getColumn('C').values = ['Marketing List', ...marketings];
+    
+    // Apply Data Validation to 1000 rows
+    for (let i = 2; i <= 1000; i++) {
+      // PIC Column (B)
+      if (pics.length > 0) {
+        sheet.getCell(`B${i}`).dataValidation = {
+          type: 'list',
+          allowBlank: false,
+          formulae: [`MasterData!$A$2:$A$${pics.length + 1}`],
+          showErrorMessage: true,
+          errorTitle: 'Error PIC',
+          error: 'Silakan pilih PIC dari daftar dropdown.'
+        };
+      }
+      // Product Column (C)
+      if (products.length > 0) {
+        sheet.getCell(`C${i}`).dataValidation = {
+          type: 'list',
+          allowBlank: false,
+          formulae: [`MasterData!$B$2:$B$${products.length + 1}`],
+          showErrorMessage: true,
+          errorTitle: 'Error Produk',
+          error: 'Silakan pilih Jenis Produk dari daftar dropdown.'
+        };
+      }
+      // Marketing Column (D)
+      if (marketings.length > 0) {
+        sheet.getCell(`D${i}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`MasterData!$C$2:$C$${marketings.length + 1}`],
+          showErrorMessage: true,
+          errorTitle: 'Error Marketing',
+          error: 'Silakan pilih PIC Marketing dari daftar dropdown.'
+        };
+      }
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="Template_Import_Project.xlsx"');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Gagal membuat template.");
+  }
+});
+
+// 2. Import Excel
+app.post('/api/projects/import', exportImportLimiter, upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "File Excel tidak ditemukan" });
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+    const sheet = workbook.getWorksheet(1); // Read first sheet
+    
+    if (!sheet) return res.status(400).json({ error: "Sheet tidak ditemukan" });
+
+    let successCount = 0;
+    let failedCount = 0;
+    const errors = [];
+    
+    // Fetch master data for memory mapping
+    const usersRes = await pool.query("SELECT id, full_name FROM users WHERE is_active = true");
+    const userMap = {};
+    usersRes.rows.forEach(u => userMap[u.full_name] = u.id);
+
+    const productsRes = await pool.query("SELECT id, name FROM master_data WHERE type = 'JENIS_PRODUK' AND is_active = true");
+    const productMap = {};
+    productsRes.rows.forEach(p => productMap[p.name] = p.id);
+
+    const marketingRes = await pool.query("SELECT id, name FROM master_data WHERE type = 'MARKETING' AND is_active = true");
+    const marketingMap = {};
+    marketingRes.rows.forEach(p => marketingMap[p.name] = p.id);
+
+    // Iterate rows starting from row 2 (skip header)
+    const promises = [];
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header
+      
+      const projectName = row.getCell(1).text?.trim();
+      const picName = row.getCell(2).text?.trim();
+      const productName = row.getCell(3).text?.trim();
+      const marketingName = row.getCell(4).text?.trim();
+      
+      let startDateStr = null;
+      const startDateRaw = row.getCell(5).value;
+      if (startDateRaw) {
+         if (startDateRaw instanceof Date) {
+             startDateStr = new Date(startDateRaw.getTime() - startDateRaw.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+         } else {
+             startDateStr = startDateRaw; // Assumes string format if not actual Date
+         }
+      }
+
+      const projectValueRaw = row.getCell(6).value;
+      
+      let projectValue = 0;
+      if (projectValueRaw !== undefined && projectValueRaw !== null) {
+         projectValue = Number(String(projectValueRaw).replace(/,/g, ''));
+      }
+
+      if (!projectName) {
+        errors.push({ row: rowNumber, name: projectName || '-', error: "Nama Project wajib diisi." });
+        failedCount++;
+        return;
+      }
+      if (!picName || !userMap[picName]) {
+        errors.push({ row: rowNumber, name: projectName, error: `PIC Project "${picName}" tidak valid atau tidak terdaftar.` });
+        failedCount++;
+        return;
+      }
+      if (!productName || !productMap[productName]) {
+        errors.push({ row: rowNumber, name: projectName, error: `Jenis Produk "${productName}" tidak valid atau tidak terdaftar.` });
+        failedCount++;
+        return;
+      }
+      if (marketingName && !marketingMap[marketingName]) {
+        errors.push({ row: rowNumber, name: projectName, error: `PIC Marketing "${marketingName}" tidak valid atau tidak terdaftar.` });
+        failedCount++;
+        return;
+      }
+      if (isNaN(projectValue)) {
+        errors.push({ row: rowNumber, name: projectName, error: `Nilai Project format tidak valid (harus angka).` });
+        failedCount++;
+        return;
+      }
+
+      // Valid data, queue insert
+      const picId = userMap[picName];
+      const prodId = productMap[productName];
+      const markId = marketingName ? marketingMap[marketingName] : null;
+      
+      promises.push(
+        pool.query(
+          "INSERT INTO projects (project_name, status, pic_user_id, product_type_id, pic_marketing_id, baseline_start_date, project_value) VALUES ($1, 'Not Started', $2, $3, $4, $5, $6)",
+          [projectName, picId, prodId, markId, startDateStr, projectValue]
+        ).then(() => {
+          successCount++;
+        }).catch(err => {
+          errors.push({ row: rowNumber, name: projectName, error: "Gagal menyimpan ke database: " + err.message });
+          failedCount++;
+        })
+      );
+    });
+
+    await Promise.all(promises);
+    
+    res.json({ successCount, failedCount, errors });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Gagal memproses file Excel." });
+  }
+});

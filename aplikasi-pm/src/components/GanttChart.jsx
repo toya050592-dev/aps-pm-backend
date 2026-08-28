@@ -1,6 +1,15 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
+const monthsIndo = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const formatDate = (dateStr) => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    return `${d.getDate()} ${monthsIndo[d.getMonth()].substring(0, 3)} ${d.getFullYear()}`;
+};
+
 function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
     // 1. Group Tasks (Root & Sub)
     const rootTasks = tasks.filter(t => !t.parent_task_id);
@@ -10,21 +19,11 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
         subTasksMap[t.parent_task_id].push(t);
     });
 
-    // Sort root tasks chronologically by plan_start_date
-    rootTasks.sort((a, b) => new Date(a.plan_start_date || 0) - new Date(b.plan_start_date || 0));
-
-    // Sort sub tasks chronologically
-    Object.keys(subTasksMap).forEach(key => {
-        subTasksMap[key].sort((a, b) => new Date(a.plan_start_date || 0) - new Date(b.plan_start_date || 0));
-    });
-
     // Build timeline dates
     const allDates = [];
     tasks.forEach(t => {
         if (t.plan_start_date) allDates.push(new Date(t.plan_start_date));
         if (t.plan_end_date) allDates.push(new Date(t.plan_end_date));
-        if (t.actual_start_date) allDates.push(new Date(t.actual_start_date));
-        if (t.actual_end_date) allDates.push(new Date(t.actual_end_date));
     });
 
     if (allDates.length === 0) {
@@ -149,23 +148,12 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
         const { bg, text, pill } = getStatusStyle(t.status);
 
         // Find start and end indices for rounding pill corners
-                // Find start and end indices for Plan
-        let planStartWkIdx = -1;
-        let planEndWkIdx = -1;
+        let startWkIdx = -1;
+        let endWkIdx = -1;
         weeks.forEach((w, i) => {
             if (isOverlap(t.plan_start_date, t.plan_end_date, w.start, w.end)) {
-                if (planStartWkIdx === -1) planStartWkIdx = i;
-                planEndWkIdx = i;
-            }
-        });
-
-        // Find start and end indices for Actual
-        let actStartWkIdx = -1;
-        let actEndWkIdx = -1;
-        weeks.forEach((w, i) => {
-            if (isOverlap(t.actual_start_date, t.actual_end_date, w.start, w.end)) {
-                if (actStartWkIdx === -1) actStartWkIdx = i;
-                actEndWkIdx = i;
+                if (startWkIdx === -1) startWkIdx = i;
+                endWkIdx = i;
             }
         });
 
@@ -189,7 +177,11 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
                         )}
                     </div>
                 </td>
-                <td style={{ ...tdStyle, textAlign: 'center' }}>{project?.pic_name || '-'}</td>
+                <td style={{ ...tdStyle, textAlign: 'center' }}>
+                    {t.assignees && t.assignees.length > 0 
+                        ? t.assignees.map(a => a.full_name).join(', ') 
+                        : '-'}
+                </td>
 
                 <td style={{ ...tdStyle, textAlign: 'center' }}>{formatDate(t.plan_start_date)}</td>
                 <td style={{ ...tdStyle, textAlign: 'center' }}>{formatDate(t.plan_end_date)}</td>
@@ -211,43 +203,24 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
 
                 {/* Timeline Grid */}
                 {weeks.map((w, i) => {
-                    const isPlanOverlap = isOverlap(t.plan_start_date, t.plan_end_date, w.start, w.end);
-                    const isPlanStart = i === planStartWkIdx;
-                    const isPlanEnd = i === planEndWkIdx;
-
-                    const isActOverlap = isOverlap(t.actual_start_date, t.actual_end_date, w.start, w.end);
-                    const isActStart = i === actStartWkIdx;
-                    const isActEnd = i === actEndWkIdx;
+                    const isOverlapping = isOverlap(t.plan_start_date, t.plan_end_date, w.start, w.end);
+                    const isStart = i === startWkIdx;
+                    const isEnd = i === endWkIdx;
 
                     return (
-                        <td key={i} style={{ ...tdTimelineStyle, padding: '2px 0' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', height: '100%', justifyContent: 'center' }}>
-                                {/* Plan Bar */}
-                                {isPlanOverlap ? (
-                                    <div style={{
-                                        height: '6px',
-                                        backgroundColor: '#cbd5e1', // Light gray for Plan
-                                        borderTopLeftRadius: isPlanStart ? '3px' : '0',
-                                        borderBottomLeftRadius: isPlanStart ? '3px' : '0',
-                                        borderTopRightRadius: isPlanEnd ? '3px' : '0',
-                                        borderBottomRightRadius: isPlanEnd ? '3px' : '0',
-                                        width: '100%',
-                                    }} title="Plan" />
-                                ) : <div style={{ height: '6px' }} />}
-                                
-                                {/* Actual Bar */}
-                                {isActOverlap ? (
-                                    <div style={{
-                                        height: '10px',
-                                        backgroundColor: pill,
-                                        borderTopLeftRadius: isActStart ? '5px' : '0',
-                                        borderBottomLeftRadius: isActStart ? '5px' : '0',
-                                        borderTopRightRadius: isActEnd ? '5px' : '0',
-                                        borderBottomRightRadius: isActEnd ? '5px' : '0',
-                                        width: '100%',
-                                    }} title="Actual" />
-                                ) : <div style={{ height: '10px' }} />}
-                            </div>
+                        <td key={i} style={tdTimelineStyle}>
+                            {isOverlapping && (
+                                <div style={{
+                                    height: '14px',
+                                    backgroundColor: pill,
+                                    borderTopLeftRadius: isStart ? '7px' : '0',
+                                    borderBottomLeftRadius: isStart ? '7px' : '0',
+                                    borderTopRightRadius: isEnd ? '7px' : '0',
+                                    borderBottomRightRadius: isEnd ? '7px' : '0',
+                                    width: '100%',
+                                    margin: '6px 0' // vertical spacing in the cell
+                                }} />
+                            )}
                         </td>
                     );
                 })}
@@ -274,17 +247,17 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
                         </div>
                     </div>
                     <div>
-                        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Project Name</div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Company Name</div>
                         <div style={{ fontWeight: '600', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ color: '#10b981' }}><i data-lucide="building"></i></span>
-                            {project?.project_name || 'Project Name'}
+                            {project?.project_name || '-'}
                         </div>
                     </div>
                     <div>
                         <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>Date</div>
                         <div style={{ fontWeight: '600', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ color: '#10b981' }}><i data-lucide="calendar"></i></span>
-                            {formatDate(new Date())}
+                            {project?.baseline_start_date ? formatDate(new Date(project.baseline_start_date)) : '-'}
                         </div>
                     </div>
                 </div>
@@ -428,6 +401,115 @@ function GanttChart({ tasks, project, canManageTask, onDeleteTask }) {
 }
 
 // ---------- PANEL EDIT TUGAS ----------
+function TaskEditPanel({ task, project, currentUser, onSave }) {
+    const [editTaskName, setEditTaskName] = useState(task.task_name || '');
+    const [editPlanStart, setEditPlanStart] = useState(task.plan_start_date ? task.plan_start_date.split('T')[0] : '');
+    const [editPlanEnd, setEditPlanEnd] = useState(task.plan_end_date ? task.plan_end_date.split('T')[0] : '');
+    const [actualStart, setActualStart] = useState(task.actual_start_date ? task.actual_start_date.split('T')[0] : '');
+    const [actualEnd, setActualEnd] = useState(task.actual_end_date ? task.actual_end_date.split('T')[0] : '');
+    const [notes, setNotes] = useState(task.notes || '');
+    const [progress, setProgress] = useState(task.progress_percentage || 0);
+    const [historyLogs, setHistoryLogs] = useState([]);
+
+    const fetchHistory = async () => {
+        try {
+            const r = await fetch(`${API_URL}/api/tasks/${task.id}/history`);
+            if (r.ok) setHistoryLogs(await r.json());
+        } catch (e) { console.error(e); }
+    };
+
+    useEffect(() => { fetchHistory(); }, [task.id]);
+
+    const handleSaveAndRefresh = async () => {
+        await onSave(task, { 
+            task_name: editTaskName, 
+            plan_start_date: editPlanStart, 
+            plan_end_date: editPlanEnd, 
+            actual_start_date: actualStart, 
+            actual_end_date: actualEnd, 
+            notes, 
+            progress_percentage: progress 
+        });
+        fetchHistory();
+    };
+
+    return (
+        <div style={{ backgroundColor: '#f8fafc', padding: '20px', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div>
+                    <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Informasi Utama Tugas</h4>
+                    <label style={{ fontSize: '11px', color: '#64748b' }}>Nama Tugas</label>
+                    <input type="text" value={editTaskName} onChange={(e) => setEditTaskName(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', marginBottom: '8px' }} />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '11px', color: '#64748b' }}>Plan Start</label>
+                            <input type="date" value={editPlanStart} onChange={(e) => setEditPlanStart(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '11px', color: '#64748b' }}>Plan End</label>
+                            <input type="date" value={editPlanEnd} onChange={(e) => setEditPlanEnd(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '8px' }}>Realisasi (Actual) & Progress</h4>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '11px', color: '#64748b' }}>Actual Start</label>
+                            <input type="date" value={actualStart} onChange={(e) => setActualStart(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            <label style={{ fontSize: '11px', color: '#64748b' }}>Actual End</label>
+                            <input type="date" value={actualEnd} onChange={(e) => setActualEnd(e.target.value)} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }} />
+                        </div>
+                    </div>
+                    <label style={{ fontSize: '11px', color: '#64748b' }}>Progress %</label>
+                    <select value={progress} onChange={(e) => setProgress(parseInt(e.target.value))} style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', marginBottom: '8px' }}>
+                        {[0, 10, 25, 50, 75, 90, 100].map(v => <option key={v} value={v}>{v}%</option>)}
+                    </select>
+                </div>
+            </div>
+
+            <div style={{ marginTop: '12px' }}>
+                <label style={{ fontSize: '11px', color: '#64748b' }}>Keterangan / Kendala</label>
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Contoh: Menunggu data dari klien, tertunda karena akses server..."
+                    style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', minHeight: '60px', resize: 'vertical' }} />
+            </div>
+
+            <button onClick={handleSaveAndRefresh}
+                style={{ marginTop: '12px', backgroundColor: '#0f172a', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold' }}>
+                Simpan Perubahan
+            </button>
+
+            {/* RIWAYAT PERUBAHAN (HISTORY LOG) */}
+            <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+                <h4 style={{ fontSize: '13px', fontWeight: 'bold', color: '#334155', marginBottom: '10px' }}>
+                    📜 Riwayat Perubahan (History Log)
+                </h4>
+                {historyLogs.length === 0 ? (
+                    <p style={{ fontSize: '12px', color: '#94a3b8' }}>Belum ada riwayat perubahan pada tugas ini.</p>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto' }}>
+                        {historyLogs.map(item => (
+                            <div key={item.id} style={{ fontSize: '12px', backgroundColor: '#fff', padding: '8px 12px', borderRadius: '6px', border: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                    <span style={{ fontWeight: 'bold', color: '#1e293b', marginRight: '6px' }}>{item.user_name}:</span>
+                                    <span style={{ color: '#475569' }}>{item.action}</span>
+                                </div>
+                                <span style={{ fontSize: '11px', color: '#64748b', backgroundColor: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', whiteSpace: 'nowrap', marginLeft: '10px', fontWeight: '500' }}>
+                                    📅 {item.created_at ? item.created_at.split('T')[0] : '-'}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+
 
 export default GanttChart;
-

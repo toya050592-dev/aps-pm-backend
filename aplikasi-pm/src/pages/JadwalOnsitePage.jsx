@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Clock, CheckCircle2, AlertTriangle, User, CalendarDays, Search, Filter, Plus, Trash2, Edit, X, ChevronDown, Check } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 const JadwalOnsitePage = ({ currentUser }) => {
     const [schedules, setSchedules] = useState([]);
     const [users, setUsers] = useState([]);
@@ -34,7 +36,7 @@ const JadwalOnsitePage = ({ currentUser }) => {
     }, []);
 
     const fetchSchedules = () => {
-        fetch('https://aps-pm-backend.onrender.com/api/onsite-schedules')
+        fetch(`${API_URL}/api/onsite-schedules`)
             .then(res => res.json())
             .then(data => {
                 setSchedules(data);
@@ -47,7 +49,7 @@ const JadwalOnsitePage = ({ currentUser }) => {
     };
 
     const fetchUsers = () => {
-        fetch('https://aps-pm-backend.onrender.com/api/users')
+        fetch(`${API_URL}/api/users`)
             .then(res => res.json())
             .then(data => setUsers(data))
             .catch(err => console.error("Failed to load users", err));
@@ -128,8 +130,8 @@ const JadwalOnsitePage = ({ currentUser }) => {
         }
 
         const url = editingId 
-            ? `https://aps-pm-backend.onrender.com/api/onsite-schedules/${editingId}`
-            : 'https://aps-pm-backend.onrender.com/api/onsite-schedules';
+            ? `${API_URL}/api/onsite-schedules/${editingId}`
+            : `${API_URL}/api/onsite-schedules`;
         
         const method = editingId ? 'PUT' : 'POST';
 
@@ -153,7 +155,7 @@ const JadwalOnsitePage = ({ currentUser }) => {
     const handleDelete = async (id) => {
         if (window.confirm('Yakin ingin menghapus jadwal ini?')) {
             try {
-                const res = await fetch(`https://aps-pm-backend.onrender.com/api/onsite-schedules/${id}`, {
+                const res = await fetch(`${API_URL}/api/onsite-schedules/${id}`, {
                     method: 'DELETE'
                 });
                 if (res.ok) {

@@ -449,184 +449,25 @@ export default function OvertimePage({ currentUser }) {
 
             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginBottom: '32px' }}>
                 
-                {/* Export Excel Modal */}
-                {showExportModal && (
-                    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <div className="modern-card" style={{ width: '400px', animation: 'fadeIn 0.2s ease-out' }}>
-                            <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>Pilih Filter Ekspor</h3>
-                            <div style={{ marginBottom: '16px' }}>
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Nama PIC</label>
-                                <select 
-                                    className="modern-select" 
-                                    style={{ width: '100%' }}
-                                    value={exportSelectedUser}
-                                    onChange={e => setExportSelectedUser(e.target.value)}
-                                >
-                                    <option value="">Semua Karyawan (Data Gabungan)</option>
-                                    {uniqueUsers.map((u, i) => <option key={i} value={u.name}>{u.name}</option>)}
-                                </select>
-                            </div>
-                            <div style={{ marginBottom: '20px' }}>
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', marginBottom: '6px' }}>Bulan</label>
-                                <select 
-                                    className="modern-select" 
-                                    style={{ width: '100%' }}
-                                    value={exportMonth}
-                                    onChange={e => setExportMonth(e.target.value)}
-                                >
-                                    <option value="Semua">Semua Bulan</option>
-                                    <option value="0">Januari</option>
-                                    <option value="1">Februari</option>
-                                    <option value="2">Maret</option>
-                                    <option value="3">April</option>
-                                    <option value="4">Mei</option>
-                                    <option value="5">Juni</option>
-                                    <option value="6">Juli</option>
-                                    <option value="7">Agustus</option>
-                                    <option value="8">September</option>
-                                    <option value="9">Oktober</option>
-                                    <option value="10">November</option>
-                                    <option value="11">Desember</option>
-                                </select>
-                            </div>
-                            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-                                <button onClick={() => setShowExportModal(false)} className="modern-btn" style={{ background: '#fff', color: '#475569', border: '1px solid #cbd5e1' }}>Batal</button>
-                                <button onClick={generateExcel} className="modern-btn modern-btn-primary" style={{ background: '#10b981', border: 'none' }}>Ekspor Excel</button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <ExportModal 
+                    isOpen={showExportModal} 
+                    onClose={() => setShowExportModal(false)}
+                    uniqueUsers={uniqueUsers}
+                    exportSelectedUser={exportSelectedUser}
+                    setExportSelectedUser={setExportSelectedUser}
+                    exportMonth={exportMonth}
+                    setExportMonth={setExportMonth}
+                    onExport={generateExcel}
+                />
 
-                {/* Form Pengajuan Lembur */}
-                {showForm && (
-                    <div className="modern-card" style={{ flex: '1', minWidth: '320px', animation: 'slideDown 0.3s ease-out' }}>
-                        <h3 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px', color: 'var(--secondary-800)' }}>Form Pengajuan Lembur</h3>
-                        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Nama Personel</label>
-                                <select 
-                                    className="modern-select" 
-                                    style={{ width: '100%' }}
-                                    value={formData.user_id}
-                                    onChange={e => setFormData({...formData, user_id: e.target.value})}
-                                    required
-                                >
-                                    <option value="">-- Pilih Personel --</option>
-                                    {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
-                                </select>
-                            </div>
-                            <div style={{ display: 'flex', gap: '16px' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Departemen / Divisi</label>
-                                    <select 
-                                        className="modern-select" 
-                                        style={{ width: '100%' }}
-                                        value={formData.department}
-                                        onChange={e => setFormData({...formData, department: e.target.value})}
-                                    >
-                                        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Hari Kerja / Libur</label>
-                                    <select 
-                                        className="modern-select" 
-                                        style={{ width: '100%' }}
-                                        value={formData.is_holiday}
-                                        onChange={e => setFormData({...formData, is_holiday: e.target.value === 'true'})}
-                                    >
-                                        <option value="false">Hari Kerja</option>
-                                        <option value="true">Hari Libur</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Tanggal Lembur</label>
-                                <input 
-                                    type="date" 
-                                    className="modern-input" 
-                                    style={{ width: '100%' }}
-                                    value={formData.overtime_date}
-                                    onChange={e => setFormData({...formData, overtime_date: e.target.value})}
-                                    required
-                                />
-                            </div>
-                            <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-end' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Jam Mulai</label>
-                                    <input 
-                                        type="time" 
-                                        className="modern-input" 
-                                        style={{ width: '100%' }}
-                                        value={formData.start_time}
-                                        onChange={e => {
-                                            const st = e.target.value;
-                                            const hrs = calculateHours(st, formData.end_time);
-                                            setFormData({...formData, start_time: st, hours: hrs > 0 ? hrs : formData.hours});
-                                        }}
-                                        required
-                                    />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Jam Akhir</label>
-                                    <input 
-                                        type="time" 
-                                        className="modern-input" 
-                                        style={{ width: '100%' }}
-                                        value={formData.end_time}
-                                        onChange={e => {
-                                            const et = e.target.value;
-                                            const hrs = calculateHours(formData.start_time, et);
-                                            setFormData({...formData, end_time: et, hours: hrs > 0 ? hrs : formData.hours});
-                                        }}
-                                        required
-                                    />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Jumlah Jam</label>
-                                    <input 
-                                        type="number" 
-                                        step="0.5"
-                                        className="modern-input" 
-                                        style={{ width: '100%', backgroundColor: '#f8fafc' }}
-                                        value={formData.hours}
-                                        onChange={e => setFormData({...formData, hours: e.target.value})}
-                                        placeholder="0"
-                                        readOnly
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Deskripsi Pekerjaan</label>
-                                <textarea 
-                                    className="modern-input" 
-                                    style={{ width: '100%', minHeight: '80px', resize: 'vertical' }}
-                                    placeholder="Contoh: Pendampingan UAT Bispro..."
-                                    value={formData.reason}
-                                    onChange={e => setFormData({...formData, reason: e.target.value})}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--secondary-700)', marginBottom: '6px' }}>Evidence (Foto/Dokumen)</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <label className="modern-btn" style={{ background: '#f1f5f9', color: '#475569', border: '1px dashed #cbd5e1', cursor: 'pointer', flex: 1, textAlign: 'center' }}>
-                                        <FileImage size={16} style={{ marginRight: '8px' }} />
-                                        {formData.evidence ? formData.evidence.name : 'Pilih File / Unggah'}
-                                        <input type="file" accept="image/*,.pdf" onChange={handleFileChange} style={{ display: 'none' }} />
-                                    </label>
-                                </div>
-                            </div>
-                            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-                                <button type="submit" className="modern-btn modern-btn-primary" style={{ flex: 1 }} disabled={isSubmitting}>
-                                    {isSubmitting ? 'Menyimpan...' : 'Kirim Pengajuan'}
-                                </button>
-                                <button type="button" onClick={() => setShowForm(false)} className="modern-btn" style={{ flex: 1, background: '#f1f5f9', color: '#64748b' }}>
-                                    Batal
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                <OvertimeForm 
+                    showForm={showForm}
+                    handleSubmit={handleSubmit}
+                    formData={formData}
+                    setFormData={setFormData}
+                    users={users}
+                    loading={loading}
+                />
                 )}
 
                 {/* Mini Bar Chart */}
@@ -666,124 +507,16 @@ export default function OvertimePage({ currentUser }) {
                 <div style={{ padding: '24px', borderBottom: '1px solid #e2e8f0' }}>
                     <h3 style={{ fontSize: '18px', fontWeight: '700', color: 'var(--secondary-800)', margin: 0 }}>Daftar Pengajuan Lembur</h3>
                 </div>
-                <table className="modern-table" style={{ margin: 0, width: '100%' }}>
-                    <thead>
-                        <tr>
-                            <th style={{ paddingLeft: '24px' }}>Karyawan</th>
-                            <th>Departemen</th>
-                            <th>Tanggal & Waktu</th>
-                            <th>Jam</th>
-                            <th>Status</th>
-                            <th style={{ textAlign: 'right', paddingRight: '24px' }}>Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredRequests.length === 0 ? (
-                            <tr>
-                                <td colSpan="6" style={{ textAlign: 'center', padding: '32px', color: 'var(--secondary-500)' }}>
-                                    Tidak ada data pengajuan lembur untuk bulan ini.
-                                </td>
-                            </tr>
-                        ) : filteredRequests.map(req => (
-                            <tr key={req.id}>
-                                <td style={{ paddingLeft: '24px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                        <div style={{ 
-                                            width: '36px', height: '36px', borderRadius: '50%', 
-                                            background: 'var(--primary-100)', color: 'var(--primary-700)',
-                                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                            fontWeight: 'bold', fontSize: '14px'
-                                        }}>
-                                            {getInitials(req.user_name)}
-                                        </div>
-                                        <div>
-                                            <p style={{ margin: 0, fontWeight: '600', color: 'var(--secondary-900)', fontSize: '14px' }}>
-                                                {req.user_name}
-                                            </p>
-                                            <span style={{ fontSize: '12px', color: 'var(--secondary-500)' }}>
-                                                {req.reason ? (req.reason.length > 25 ? req.reason.substring(0, 25) + '...' : req.reason) : '-'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <span style={{ padding: '4px 10px', background: '#f1f5f9', borderRadius: '20px', fontSize: '12px', fontWeight: '600', color: '#475569' }}>
-                                        {req.department}
-                                    </span>
-                                </td>
-                                <td>
-                                    <p style={{ margin: 0, fontWeight: '500', color: 'var(--secondary-800)', fontSize: '14px' }}>
-                                        {new Date(req.overtime_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                    </p>
-                                    <span style={{ fontSize: '12px', color: 'var(--secondary-500)' }}>
-                                        {req.start_time?.slice(0,5) || '-'} s/d {req.end_time?.slice(0,5) || '-'} {req.is_holiday ? '(Libur)' : ''}
-                                    </span>
-                                </td>
-                                <td><strong style={{ color: 'var(--secondary-900)' }}>{(parseFloat(req.hours || 0) * (req.is_holiday ? 2 : 1)).toFixed(2)}h</strong></td>
-                                <td>
-                                    <span style={{ 
-                                        padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold',
-                                        background: req.status === 'Approved' ? '#dcfce7' : '#fef3c7',
-                                        color: req.status === 'Approved' ? '#16a34a' : '#d97706'
-                                    }}>
-                                        {req.status}
-                                    </span>
-                                </td>
-                                <td style={{ textAlign: 'right', paddingRight: '24px' }}>
-                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                        {req.evidence_url && (
-                                            <button onClick={() => setPhotoPreviewUrl(`${API_URL}${req.evidence_url}`)} className="modern-btn" style={{ padding: '6px', background: '#e0f2fe', color: '#0284c7', border: 'none' }} title="Lihat Foto">
-                                                <FileImage size={16} />
-                                            </button>
-                                        )}
-                                        {req.status === 'Pending' && (currentUser?.role === 'Admin' || (currentUser?.permissions || []).includes('approve_overtime')) && (
-                                            <button 
-                                                onClick={() => handleApprove(req.id)}
-                                                className="modern-btn" 
-                                                style={{ padding: '6px 12px', fontSize: '12px', background: 'var(--primary-600)', color: 'white' }}
-                                            >
-                                                <ShieldCheck size={14} style={{ marginRight: '4px' }} /> Setujui
-                                            </button>
-                                        )}
-                                        {(currentUser?.role === 'Admin' || (currentUser?.permissions || []).includes('approve_overtime')) && (
-                                            <button 
-                                                onClick={() => handleDelete(req.id)}
-                                                className="modern-btn" 
-                                                style={{ padding: '6px 10px', fontSize: '12px', background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' }}
-                                                title="Hapus"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        )}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                        {requests.length === 0 && (
-                            <tr>
-                                <td colSpan="6" style={{ textAlign: 'center', padding: '48px', color: 'var(--secondary-400)' }}>
-                                    <p style={{ fontSize: '14px', margin: 0 }}>Belum ada pengajuan lembur.</p>
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                <OvertimeTable 
+                    requests={filteredRequests}
+                    role={role}
+                    onApprove={(id, status) => handleApprove(id, status)}
+                    onDelete={handleDelete}
+                    onPhotoClick={setPhotoPreviewUrl}
+                />
             </div>
 
-            {/* Photo Preview Modal */}
-            {photoPreviewUrl && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} onClick={() => setPhotoPreviewUrl(null)}>
-                    <div style={{ position: 'relative', maxWidth: '100%', maxHeight: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-                        <button 
-                            onClick={() => setPhotoPreviewUrl(null)}
-                            style={{ position: 'absolute', top: '-40px', right: '0', background: 'transparent', border: 'none', color: 'white', fontSize: '32px', cursor: 'pointer', zIndex: 1001 }}
-                        >
-                            &times;
-                        </button>
-                        <img src={photoPreviewUrl} alt="Evidence" style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }} />
-                    </div>
-                </div>
-            )}
+            <PhotoPreviewModal photoUrl={photoPreviewUrl} onClose={() => setPhotoPreviewUrl(null)} />
         </div>
     );
 }

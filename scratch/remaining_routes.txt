@@ -1,0 +1,412 @@
+  } finally {
+    client.release();
+  }
+});
+
+// === ENDPOINTS MODUL ENTERPRISE ===
+
+app.get('/api/onsite-schedules', async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM onsite_schedules WHERE status != 'Selesai' ORDER BY id ASC");
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
+  } catch (err) {
+    console.error('Error fetching onsite schedules:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
+app.post('/api/onsite-schedules', async (req, res) => {
+  try {
+    const { pic_names, role, location, status, start_date, end_date, health } = req.body;
+    const result = await pool.query(
+      `INSERT INTO onsite_schedules (pic_names, role, location, status, start_date, end_date, health) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [JSON.stringify(pic_names), role, location, status, start_date, end_date, health]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Error creating onsite schedule:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
+app.put('/api/onsite-schedules/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pic_names, role, location, status, start_date, end_date, health } = req.body;
+    const result = await pool.query(
+      `UPDATE onsite_schedules 
+       SET pic_names = $1, role = $2, location = $3, status = $4, start_date = $5, end_date = $6, health = $7 
+       WHERE id = $8 RETURNING *`,
+      [JSON.stringify(pic_names), role, location, status, start_date, end_date, health, id]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Jadwal tidak ditemukan.' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error updating onsite schedule:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
+app.delete('/api/onsite-schedules/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query('DELETE FROM onsite_schedules WHERE id = $1 RETURNING *', [id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Jadwal tidak ditemukan.' });
+    res.json({ message: 'Jadwal berhasil dihapus.' });
+  } catch (err) {
+    console.error('Error deleting onsite schedule:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
+app.get('/api/reports', heavyLimiter, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM reports ORDER BY date DESC');
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
+  } catch (err) {
+    console.error('Error fetching reports:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
+// --- OVERTIME ---
+app.get('/api/overtime', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT o.*, u.full_name as user_name 
+      FROM overtime_requests o 
+      JOIN users u ON o.user_id = u.id 
+      ORDER BY o.id DESC
+    `);
+    res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
+  } catch (err) {
+    console.error('Error fetching overtime:', err);
+    res.status(500).json({ error: 'Terjadi kesalahan server.' });
+  }
+});
+
+app.post('/api/overtime', uploadDisk.single('evidence'), async (req, res) => {
+  try {
+    const { user_id, department, overtime_date, is_holiday, start_time, end_time, hours, reason } = req.body;
+    let evidence_url = null;
+    if (req.file) {
+      evidence_url = '/uploads/' + req.file.filename;
+    }
+    
+    const newRequest = await pool.query(
+      `INSERT INTO overtime_requests (user_id, department, overtime_date, is_holiday, start_time, end_time, hours, reason, evidence_url) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [user_id, department, overtime_date, is_holiday === 'true' || is_holiday === true, start_time, end_time, hours, reason, evidence_url]
+    );
+    res.json(newRequest.rows[0]);
+  } catch (err) {
+    console.error('Error creating overtime:', err);
+    res.status(500).json({ error: 'Gagal mengajukan lembur.' });
+  }
+});
+
+app.put('/api/overtime/:id/approve', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      "UPDATE overtime_requests SET status = 'Approved' WHERE id = $1 RETURNING *",
+      [id]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Error approving overtime:', err);
+    res.status(500).json({ error: 'Gagal menyetujui lembur.' });
+  }
+});
+
+app.delete('/api/overtime/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM overtime_requests WHERE id = $1', [id]);
+    res.json({ message: 'Lembur berhasil dihapus' });
+  } catch (err) {
+    console.error('Error deleting overtime:', err);
+    res.status(500).json({ error: 'Gagal menghapus lembur.' });
+  }
+});
+
+// --- DOCUMENT TRACKING ---
+const docTrackingStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        const dir = './uploads/doc-tracking';
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const cleanName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '-');
+        cb(null, 'doc-' + uniqueSuffix + '-' + cleanName);
+    }
+});
+/* uploadDoc replaced */ var xuploadDoc = multer({ 
+    storage: docTrackingStorage,
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
+            cb(null, true);
+        } else {
+            cb(new Error('Tipe file tidak diizinkan! Harap unggah PDF atau Gambar.'), false);
+        }
+    }
+});
+
+// --- DOCUMENT HANDOVERS API ---
+
+app.get('/api/handovers', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT h.*, 
+                   s.full_name as sender_name, 
+                   r.full_name as receiver_name,
+                   dt.no_pengajuan
+            FROM document_handovers h
+            LEFT JOIN users s ON h.sender_id = s.id
+            LEFT JOIN users r ON h.receiver_id = r.id
+            LEFT JOIN document_tracking dt ON h.document_id = dt.id
+            ORDER BY h.tanggal_diberikan DESC
+        `);
+        res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
+    } catch (err) {
+        console.error('Error fetching handovers:', err);
+        res.status(500).json({ error: 'Gagal mengambil data serah terima.' });
+    }
+});
+
+app.get('/api/handovers/:document_id', async (req, res) => {
+    try {
+        const { document_id } = req.params;
+        const result = await pool.query(`
+            SELECT h.*, 
+                   s.full_name as sender_name, 
+                   r.full_name as receiver_name 
+            FROM document_handovers h
+            LEFT JOIN users s ON h.sender_id = s.id
+            LEFT JOIN users r ON h.receiver_id = r.id
+            WHERE h.document_id = $1
+            ORDER BY h.tanggal_diberikan DESC
+        `, [document_id]);
+        res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
+    } catch (err) {
+        console.error('Error fetching handovers:', err);
+        res.status(500).json({ error: 'Gagal mengambil riwayat serah terima.' });
+    }
+});
+
+app.post('/api/handovers', async (req, res) => {
+    try {
+        const { document_id, sender_id, receiver_id, nama_dokumen, catatan } = req.body;
+        if (!sender_id || !receiver_id) return res.status(400).json({ error: 'Pengirim dan Penerima tidak boleh kosong.' });
+        if (String(sender_id) === String(receiver_id)) return res.status(400).json({ error: 'Pengirim dan Penerima tidak boleh sama.' });
+
+        const result = await pool.query(
+            `INSERT INTO document_handovers (document_id, sender_id, receiver_id, nama_dokumen, catatan, status)
+             VALUES ($1, $2, $3, $4, $5, 'DIBERIKAN') RETURNING *`,
+            [document_id, sender_id, receiver_id, nama_dokumen, catatan || null]
+        );
+        res.json({ message: 'Serah terima berhasil dicatat.', data: result.rows[0] });
+    } catch (err) {
+        console.error('Error creating handover:', err);
+        res.status(500).json({ error: 'Gagal mencatat serah terima.' });
+    }
+});
+
+app.put('/api/handovers/:id/receive', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query(
+            `UPDATE document_handovers 
+             SET status = 'DITERIMA', tanggal_diterima = CURRENT_TIMESTAMP
+             WHERE id = $1 RETURNING *`,
+            [id]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Data serah terima tidak ditemukan.' });
+        res.json({ message: 'Dokumen berhasil dikonfirmasi diterima.', data: result.rows[0] });
+    } catch (err) {
+        console.error('Error receiving handover:', err);
+        res.status(500).json({ error: 'Gagal mengonfirmasi serah terima.' });
+    }
+});
+
+// --- END DOCUMENT HANDOVERS API ---
+
+app.get('/api/document-tracking', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT dt.*, md.name AS vendor_name 
+            FROM document_tracking dt 
+            LEFT JOIN master_data md ON dt.vendor_id = md.id 
+            ORDER BY dt.id DESC
+        `);
+        res.json(result.rows.map(doc => ({ ...doc, kebutuhan: decryptAES(doc.kebutuhan), keterangan: decryptAES(doc.keterangan) })));
+    } catch (err) {
+        console.error('Error fetching document tracking:', err);
+        res.status(500).json({ error: 'Terjadi kesalahan server.' });
+    }
+});
+
+// Create new (Tahap Pengajuan)
+var xdocFields = [
+    { name: 'file_pm', maxCount: 1 },
+    { name: 'file_pr', maxCount: 1 },
+    { name: 'file_po', maxCount: 1 },
+    { name: 'file_implementasi', maxCount: 1 },
+    { name: 'file_bast', maxCount: 1 }
+];
+
+app.post('/api/document-tracking', uploadDoc.fields(docFields), async (req, res) => {
+    try {
+        const { vendor_id, marketing_pic_id, nama_project, no_pengajuan, kebutuhan, keterangan, nilai_estimasi, pm_date, pm_pic, status, last_updated_by } = req.body;
+        
+        // Find if file_pm is uploaded
+        const file_pm = req.files?.file_pm?.[0] ? `/uploads/doc-tracking/${req.files.file_pm[0].filename}` : null;
+        
+        const sanitize = (val) => (val === "" || val === "null" || val === undefined) ? null : val;
+
+        const result = await pool.query(
+            `INSERT INTO document_tracking (vendor_id, marketing_pic_id, nama_project, no_pengajuan, kebutuhan, keterangan, nilai_estimasi, file_pm, pm_date, pm_pic, status, last_updated_by) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+            [sanitize(vendor_id), sanitize(marketing_pic_id), sanitize(nama_project), sanitize(no_pengajuan), encryptAES(sanitize(kebutuhan)), encryptAES(sanitize(keterangan)), sanitize(nilai_estimasi), file_pm, sanitize(pm_date), sanitize(pm_pic), status || 'PENGAJUAN', sanitize(last_updated_by)]
+        );
+        res.status(201).json(result.rows[0]);
+    } catch (err) {
+        console.error('Error creating document tracking:', err);
+        res.status(500).json({ error: 'Terjadi kesalahan server saat menyimpan pengajuan.' });
+    }
+});
+
+// Update Keterangan Only
+app.put('/api/document-tracking/:id/keterangan', express.json(), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { keterangan } = req.body;
+        
+        const result = await pool.query(
+            `UPDATE document_tracking SET keterangan = $1, last_updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+            [encryptAES(keterangan), id]
+        );
+        
+        // Handle wrapper difference
+        const returningData = result.rows || result;
+        if (!returningData || returningData.length === 0) {
+             return res.status(404).json({ error: 'Data tidak ditemukan.' });
+        }
+        res.json(Array.isArray(returningData) ? returningData[0] : returningData);
+    } catch (err) {
+        console.error('Error updating keterangan:', err);
+        res.status(500).json({ error: 'Terjadi kesalahan server.' });
+    }
+});
+
+// Update (All stages)
+app.put('/api/document-tracking/:id', uploadDoc.fields(docFields), async (req, res) => {
+    try {
+        const { id } = req.params;
+        const body = req.body;
+        
+        // Handle files uploaded with fields
+        const fileUpdates = {};
+        if (req.files) {
+            Object.keys(req.files).forEach(fieldname => {
+                fileUpdates[fieldname] = `/uploads/doc-tracking/${req.files[fieldname][0].filename}`;
+            });
+        }
+
+        // Merge body and file updates
+        const updateData = { ...body, ...fileUpdates };
+
+        // VALIDASI SEKUENSIAL PENCEGAHAN BUG
+        const status = updateData.status;
+        const current = await pool.query(`SELECT * FROM document_tracking WHERE id = $1`, [id]);
+        if (!current.rows || current.rows.length === 0) return res.status(404).json({ error: 'Data tidak ditemukan.' });
+        const currData = current.rows[0];
+
+        if (status === 'PO ISSUED') {
+            const checkPrApprovedDate = updateData.pr_approved_date || currData.pr_approved_date;
+            const checkFilePr = updateData.file_pr || currData.file_pr;
+            if (!checkPrApprovedDate || !checkFilePr) {
+                return res.status(400).json({ error: 'Validasi Gagal: Dokumen PR & Tanggal Approve PR wajib diisi sebelum status PO ISSUED.' });
+            }
+        }
+        
+        if (status === 'IMPLEMENTASI') {
+            const checkFilePo = updateData.file_po || currData.file_po;
+            if (!checkFilePo) {
+                return res.status(400).json({ error: 'Validasi Gagal: Dokumen PO wajib diisi sebelum masuk ke tahap IMPLEMENTASI.' });
+            }
+        }
+
+        // Build Dynamic UPDATE query
+        let setClauses = [];
+        let params = [];
+        let paramIndex = 1;
+        for (const key in updateData) {
+            // only update allowed keys
+            const allowedKeys = ['vendor_id', 'marketing_pic_id', 'nama_project', 'no_pengajuan', 'kebutuhan', 'nilai_estimasi', 'file_pm', 'pm_date', 'pm_pic', 
+                'no_pr', 'file_pr', 'pr_submitted_date', 'pr_approved_date', 'pr_pic', 
+                'no_po', 'nilai_final', 'file_po', 'po_date', 'po_pic', 
+                'file_implementasi', 'implementasi_date', 'file_bast', 'bast_date', 'completed_date', 
+                'status', 'last_updated_by'];
+            if (allowedKeys.includes(key)) {
+                let value = updateData[key];
+                
+                // Handle empty strings for numbers/foreign keys/dates/text
+                if (value === '' || value === 'null') {
+                    value = null;
+                }
+                
+                if (key === 'keterangan' || key === 'kebutuhan') { value = encryptAES(value); }
+                if (value === 'null' || value === null) {
+                    setClauses.push(`${key} = NULL`);
+                } else {
+                    setClauses.push(`${key} = $${paramIndex}`);
+                    params.push(value);
+                    paramIndex++;
+                }
+            }
+        }
+        
+        setClauses.push(`last_updated_at = CURRENT_TIMESTAMP`);
+        params.push(id);
+        
+        const updateQuery = `UPDATE document_tracking SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+        await pool.query(updateQuery, params);
+        
+        // Ambil data terbaru untuk dikembalikan ke frontend
+        const updatedDoc = await pool.query(`SELECT * FROM document_tracking WHERE id = $1`, [id]);
+        res.json(updatedDoc.rows[0]);
+    } catch (err) {
+        console.error('Error updating document tracking:', err);
+        res.status(500).json({ error: 'Terjadi kesalahan internal saat update data dokumen.' });
+    }
+});
+
+app.delete('/api/document-tracking/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await pool.query('DELETE FROM document_tracking WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) return res.status(404).json({ error: 'Data tidak ditemukan.' });
+        res.json({ message: 'Data berhasil dihapus.' });
+    } catch (err) {
+        console.error('Error deleting document tracking:', err);
+        res.status(500).json({ error: 'Terjadi kesalahan server.' });
+    }
+});
+
+
+const port = process.env.PORT || 3000;
+httpServer.listen(port, () => {
+  console.log(`[INFO] Server Backend siap diakses pada: http://localhost:${port}`);
+});
+
+
+
+
+
+
+
+

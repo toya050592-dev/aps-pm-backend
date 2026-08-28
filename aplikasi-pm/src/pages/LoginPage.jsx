@@ -26,7 +26,10 @@ function LoginPage({ onLoginSuccess }) {
                 setLoading(false);
                 return;
             }
-            localStorage.setItem('pm_token', data.token);
+            localStorage.setItem('pm_token', data.jts ? data.jts.bearerPass : data.token);
+            if (data.jts && data.jts.stateProof) {
+                localStorage.setItem('pm_state_proof', data.jts.stateProof);
+            }
             localStorage.setItem('pm_user', JSON.stringify(data.user));
             onLoginSuccess(data.user);
         } catch (err) {

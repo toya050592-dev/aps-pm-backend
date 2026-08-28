@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Clock, CheckCircle2, AlertTriangle, User } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 const OnsiteSchedule = () => {
     const [schedules, setSchedules] = useState([]);
 
     useEffect(() => {
-        fetch('https://aps-pm-backend.onrender.com/api/onsite-schedules')
+        fetch(`${API_URL}/api/onsite-schedules`)
             .then(res => res.json())
             .then(data => setSchedules(data))
             .catch(err => console.error("Failed to load onsite schedules", err));

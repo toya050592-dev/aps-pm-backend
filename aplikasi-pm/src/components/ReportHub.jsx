@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Download, FileSpreadsheet, FileIcon } from 'lucide-react';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+
 const ReportHub = () => {
     const [activeTab, setActiveTab] = useState('Finance');
     const [reportsData, setReportsData] = useState([]);
     const tabs = ['Finance', 'Operational', 'HR'];
 
     useEffect(() => {
-        fetch('https://aps-pm-backend.onrender.com/api/reports')
+        fetch(`${API_URL}/api/reports`)
             .then(res => res.json())
             .then(data => setReportsData(data))
             .catch(err => console.error("Failed to load reports", err));

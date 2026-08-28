@@ -1,0 +1,155 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "APS Project Management API",
+    "version": "1.0.0",
+    "description": "Dokumentasi API lengkap untuk backend APS Project Management (Clean Architecture)."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    },
+    {
+      "url": "https://aps-pm-backend.onrender.com",
+      "description": "Production Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login User",
+        "tags": ["Authentication"],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nik": { "type": "string", "example": "12345678" },
+                  "password": { "type": "string", "example": "password123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login berhasil, mengembalikan token JWT." },
+          "401": { "description": "Kredensial tidak valid." }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "summary": "Dapatkan Semua Project",
+        "tags": ["Projects"],
+        "responses": {
+          "200": { "description": "Daftar seluruh project." }
+        }
+      },
+      "post": {
+        "summary": "Buat Project Baru",
+        "tags": ["Projects"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_name": { "type": "string" },
+                  "deskripsi": { "type": "string" },
+                  "status": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Project berhasil dibuat." }
+        }
+      }
+    },
+    "/api/tasks/{projectId}": {
+      "get": {
+        "summary": "Dapatkan Daftar Tugas (WBS) berdasarkan Project",
+        "tags": ["Tasks (WBS)"],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Daftar tugas WBS." }
+        }
+      }
+    },
+    "/api/projects/{projectId}/import-wbs": {
+      "post": {
+        "summary": "Import WBS dari File Excel",
+        "tags": ["Tasks (WBS)"],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Import berhasil, database di-update." },
+          "400": { "description": "Validasi gagal (Rollback total)." }
+        }
+      }
+    },
+    "/api/overtime": {
+      "get": {
+        "summary": "Dapatkan Daftar Lembur",
+        "tags": ["Overtime"],
+        "responses": {
+          "200": { "description": "Daftar pengajuan lembur." }
+        }
+      }
+    },
+    "/api/document-tracking": {
+      "get": {
+        "summary": "Dapatkan Daftar Document Tracking",
+        "tags": ["Document Tracking"],
+        "responses": {
+          "200": { "description": "Daftar dokumen." }
+        }
+      }
+    }
+  }
+}
