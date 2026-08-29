@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { encryptAES, decryptAES } = require('../utils/crypto');
 const { auditLog } = require('../middlewares/security');
 
-const SAFE_USER_FIELDS = 'id, full_name, role, username, is_active, created_at, permissions, nik, jabatan';
+const SAFE_USER_FIELDS = 'id, full_name, role, username, is_active, permissions, nik, jabatan';
 
 function isPasswordStrong(password) {
   if (!password || password.length < 8) return false;

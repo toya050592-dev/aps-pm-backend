@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 
 const { authenticateToken } = require('../middlewares/auth');
@@ -33,5 +33,6 @@ router.use('/master-data', masterDataRoutes);
 
 // Additional backwards compatibility if frontend calls /api/handovers directly
 router.use('/handovers', documentRoutes);
+router.use('/document-tracking', documentRoutes);
 
 module.exports = router;
