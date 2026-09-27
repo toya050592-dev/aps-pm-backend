@@ -13,7 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@engjts/auth": "^1.2.0",
+    "@engjts/auth": "^1.2.1",
     "@scalar/express-api-reference": "^0.10.16",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
