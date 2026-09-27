@@ -14,7 +14,7 @@
   "type": "commonjs",
   "dependencies": {
     "@engjts/auth": "^1.2.0",
-    "@scalar/express-api-reference": "^0.10.16",
+    "@scalar/express-api-reference": "^0.10.22",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
